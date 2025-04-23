@@ -1,0 +1,60 @@
+"""
+Some quirks of snakemake:
+
+Doesn't play nicely with pathlib.Path (converts to string)
+
+"""
+import importlib
+from typing import Callable
+from pathlib import Path
+
+from models import WorkflowConfig
+from parameterise import create_torch_ff_and_top
+from train import train
+from utils import get_fn
+import os
+
+from loguru import logger
+
+# Load the configuration from a yaml file
+workflow_config_path = config.get("workflow_config_path", "configs/workflow_config.yaml")
+workflow_config = WorkflowConfig.from_file(workflow_config_path)
+logger.info(f"Loaded workflow configuration {workflow_config}")
+
+
+rule get_data:
+    output:
+        workflow_config.get_data_output_smiles
+    run:
+        get_data_fn = get_fn(workflow_config.get_data_fn)
+        get_data_fn(workflow_config.data_dir)
+        workflow_config.to_file(os.path.join(workflow_config.data_dir, "workflow_config.yaml"))
+
+rule parameterise:
+    input:
+        workflow_config.get_data_output_smiles
+    output:
+        workflow_config.torch_ffs_and_tops_path
+    run:
+        create_torch_ff_and_top(workflow_config)
+        workflow_config.to_file(os.path.join(workflow_config.data_dir, "workflow_config.yaml"))
+
+
+rule filter_and_cluster:
+    input:
+        workflow_config.torch_ffs_and_tops_path
+    output:
+        directory(workflow_config.filtered_data_dir)
+    run:
+        filter_and_cluster_fn = get_fn(workflow_config.filter_and_cluster_fn)
+        filter_and_cluster_fn(workflow_config)
+        workflow_config.to_file(os.path.join(workflow_config.filtered_data_dir, "workflow_config.yaml"))
+
+rule train:
+    input:
+        workflow_config.filtered_data_dir
+    output:
+        directory(workflow_config.fit_dir)
+    run:
+        train(workflow_config)
+        workflow_config.to_file(os.path.join(workflow_config.fit_dir, "workflow_config.yaml"))
