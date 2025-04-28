@@ -17,7 +17,13 @@ import os
 from loguru import logger
 
 # Load the configuration from a yaml file
-workflow_config_path = config.get("workflow_config_path", "configs/workflow_config.yaml")
+try:
+    workflow_config_path = config["workflow_config_path"]
+except KeyError:
+    raise ValueError("workflow_config_path not found in SnakeMake config."
+                     " Please provide the path to the workflow configuration file with e.g."
+                     " `snakemake --cores all train --config workflow_config_path=configs/initial_fit_espaloma_linearised_harmonics.yaml`")
+
 workflow_config = WorkflowConfig.from_file(workflow_config_path)
 logger.info(f"Loaded workflow configuration {workflow_config}")
 
