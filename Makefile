@@ -5,7 +5,7 @@ CONDA_ENV_RUN := conda run --no-capture-output --name $(PACKAGE_NAME)
 
 env:
 	mamba create     --name $(PACKAGE_NAME)
-	mamba env update --name $(PACKAGE_NAME) --file environment.yml
+	mamba env update --name $(PACKAGE_NAME) --file environment.yaml
 	$(CONDA_ENV_RUN) pre-commit install || true
 
 lint:

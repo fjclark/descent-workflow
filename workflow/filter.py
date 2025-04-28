@@ -19,6 +19,7 @@ import tqdm
 from rdkit import Chem
 from rdkit.Chem import rdMolAlign
 from rdkit.ML.Cluster import Butina
+from loguru import logger
 
 import descent.targets.energy
 
@@ -84,7 +85,7 @@ def cluster_confs(
             entry["forces"].reshape(len(energy_ref), -1, 3)[cluster_ids, :, :].flatten()
         )
     except BaseException as e:
-        print(f"failed to cluster {entry}: {e}", flush=True)
+        logger.info(f"failed to cluster {entry}: {e}", flush=True)
 
     return entry
 
@@ -101,7 +102,7 @@ def filter_and_cluster_espaloma(config: WorkflowConfig) -> None:
 
         dataset_size = len(dataset)
         dataset = dataset.filter(lambda d: d["smiles"] in topologies)
-        print(f"removed non-parameterisable: {dataset_size} -> {len(dataset)}")
+        logger.info(f"Removed non-parameterisable: {dataset_size} -> {len(dataset)}")
 
         if source == "gen2-opt":
             with multiprocessing.Pool(N_WORKERS) as pool:
@@ -109,3 +110,23 @@ def filter_and_cluster_espaloma(config: WorkflowConfig) -> None:
                 dataset = dataset.map(cluster_fn, with_indices=False, batched=False)
 
         dataset.save_to_disk(config.filtered_data_dir / source)
+
+
+def filter_spice2(config: WorkflowConfig) -> None:
+    """Filter out any molecules which can't be parameterised."""
+
+    sources = [config.data_dir / "data-train", config.data_dir / "data-test"]
+    logger.info(f"Filtering {sources}")
+
+    for source in sources:
+        dataset = datasets.Dataset.load_from_disk(source)
+        unique_smiles = descent.targets.energy.extract_smiles(dataset)
+
+        _, topologies = torch.load(config.torch_ffs_and_tops_path)
+        topologies = {k: v for k, v in topologies.items() if k in unique_smiles}
+
+        dataset_size = len(dataset)
+        dataset = dataset.filter(lambda d: d["smiles"] in topologies)
+        logger.info(f"Removed non-parameterisable: {dataset_size} -> {len(dataset)}")
+
+        dataset.save_to_disk(config.filtered_data_dir / source.name)

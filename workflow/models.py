@@ -1,6 +1,6 @@
 """Pydantic models. These will be stored as, and read from yaml files."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 import yaml
 from pathlib import Path
 
@@ -81,6 +81,19 @@ class WorkflowConfig(BaseModel):
         "populate_by_name": True,  # So we automatically get Paths from strings
     }
 
+    @validator("parameters")
+    def check_parameters(cls, v):
+        """Make sure that if we have LinearBonds, we also have LinearAngles."""
+        if "LinearBonds" in v and "LinearAngles" not in v:
+            raise ValueError(
+                "If you have LinearBonds, you must also have LinearAngles."
+            )
+        if "LinearAngles" in v and "LinearBonds" not in v:
+            raise ValueError(
+                "If you have LinearAngles, you must also have LinearBonds."
+            )
+        return v
+
     @property
     def input_ff_name(self) -> str:
         # Remove the offxml extension from the force field path
@@ -109,6 +122,12 @@ class WorkflowConfig(BaseModel):
     @property
     def final_torch_ff_path(self) -> Path:
         return self.fit_dir / self.output_torch_ff_name
+
+    @property
+    def linearise_harm(self) -> bool:
+        """Whether to linearise the harmonic terms in the force field."""
+        # We have validated to ensure that if we have LinearBonds, we also have LinearAngles
+        return "LinearBonds" in self.parameters
 
     @classmethod
     def from_file(cls, filename: str | Path) -> "WorkflowConfig":

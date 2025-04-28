@@ -177,12 +177,16 @@ def create_torch_ff_and_top(config: WorkflowConfig) -> None:
 
     unique_smiles_sorted = sorted(unique_smiles_set)
 
+    logger.info(f"Parameterising. Linearise_harm={config.linearise_harm}")
     force_field, topologies = apply_parameters(
         unique_smiles_sorted,
         *[str(config.starting_force_field_path)],
-        linearise_harm=True,
+        linearise_harm=config.linearise_harm,
     )
 
     torch_path = config.torch_ffs_and_tops_path
     torch_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save((force_field, topologies), torch_path)
+
+    logger.info("Torch force field and topologies saved successfully.")
+    logger.info(f"Saved to {torch_path}")

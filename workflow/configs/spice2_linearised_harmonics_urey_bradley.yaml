@@ -1,0 +1,54 @@
+experiment_name: spice2_linearised_harmonics_urey_bradley
+experiment_description: Fit to SPICE 2 (filtered out larger forces) with linearised harmonics and Urey-Bradley coupling terms
+data_dir: data/spice2
+get_data_fn: get_data.get_data_spice2_force_filtered
+get_data_output_smiles: data/spice2/smiles_test_train.json
+starting_force_field_path: input_ff/lj-sage-2-2-msm-0-expanded-torsions-urey-bradley.offxml
+filter_and_cluster_fn: filter.filter_spice2
+batch_size: 500
+n_epochs: 1000
+learning_rate: 0.01
+energy_weight: 1.0
+force_weight: 1.0
+torsion_weight: 0.0
+torsion_reg: l1
+attributes: {}
+parameters:
+  LinearBonds:
+    cols:
+    - k1
+    - k2
+    scales:
+      k1: 0.0028
+      k2: 0.028
+    limits:
+      k1:
+      - null
+      - null
+      k2:
+      - null
+      - null
+  LinearAngles:
+    cols:
+    - k1
+    - k2
+    scales:
+      k1: 0.0115
+      k2: 0.0115
+    limits:
+      k1:
+      - null
+      - null
+      k2:
+      - null
+      - null
+  ProperTorsions:
+    cols:
+    - k
+    scales:
+      k: 8.72
+  ImproperTorsions:
+    cols:
+    - k
+    scales:
+      k: 2.03

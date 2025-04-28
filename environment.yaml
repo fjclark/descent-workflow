@@ -19,6 +19,7 @@ dependencies:
   # Workflow
   - snakemake
   - loguru
+  - seaborn
 
   # Parameterization
   - openff-toolkit
@@ -44,3 +45,4 @@ dependencies:
 # Pip
   - pip:
       - git+https://github.com/thomasjamespope/smee.git
+      - deepchem
