@@ -30,6 +30,7 @@ dependencies:
   # Training
   - tensorboard
   - tensorboardX
+  - tbparse
 
   # Interface with Espaloma
   - dgl
