@@ -1,0 +1,1 @@
+Obtained from /home/campus.ncl.ac.uk/nfc78/research/smee-spice-valence/SPICE-SMEE/fit-v5/fits/expanded_tor_linear/fit-20250418-135017/final-force-field.pt using input_ff/lj-sage-2-2-msm-0-expanded-torsions.offxml as the base ff.

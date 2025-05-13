@@ -11,6 +11,7 @@ from pathlib import Path
 from models import WorkflowConfig
 from parameterise import create_torch_ff_and_top
 from train import train
+from benchmark import get_sage_benchmarking_data, run_yammbs_benchmarking, run_torsion_benchmark
 from utils import get_fn
 import os
 
@@ -60,7 +61,89 @@ rule train:
     input:
         workflow_config.filtered_data_dir
     output:
-        directory(workflow_config.fit_dir)
+        protected(directory(workflow_config.fit_dir))
     run:
         train(workflow_config)
         workflow_config.to_file(os.path.join(workflow_config.fit_dir, "workflow_config.yaml"))
+
+rule get_benchmarking_data:
+    output:
+        "benchmarking/benchmarking_input_data/filtered-industry-cached.json"
+    run:
+        get_sage_benchmarking_data(output_dir="benchmarking/benchmarking_input_data")
+
+# rule get_benchmarking_data:
+#     output:
+#         "benchmarking/benchmarking_input_data2/OpenFF-Industry-Benchmark-Season-1-v1.1-filtered-charge-coverage-cache.json"
+#     shell:
+#         """
+#         cd benchmarking/benchmarking_input_data
+#         python download_dataset.py                                          \
+#         --name      "OpenFF Industry Benchmark Season 1 v1.1"                      \
+#         --type      "optimization"                                      \
+#         --output    "OpenFF-Industry-Benchmark-Season-1-v1.1.json" \
+#         --filter_output "OpenFF-Industry-Benchmark-Season-1-v1.1-intermediate.json"
+
+#         python filter_dataset_parallel.py \
+#         --input                         "OpenFF-Industry-Benchmark-Season-1-v1.1-intermediate.json"        \
+#         --output                        "OpenFF-Industry-Benchmark-Season-1-v1.1-filtered-charge-coverage.json"         \
+#         --charge-backend                "openeye"            \
+#         --forcefield                    "openff_unconstrained-2.2.0.offxml" \
+#         --n-workers                     300                     \
+#         --worker-type                   "local"                 \
+#         --batch-size                    10                      \
+#         --memory                        30                       \
+#         --walltime                      48                      \
+#         --queue                         "free"                  \
+#         --conda-environment             "descent-workflow-deepchem" \
+
+#         python cache_dataset.py 32 \
+#         """
+
+rule run_industry_benchmark:
+    input:
+        workflow_config.output_ff_path
+    output:
+        protected(str(workflow_config.benchmarking_dir) + "/icrmsd.csv")
+        # protected("benchmarking/output/openff_unconstrained-2.2.0/icrmsd.csv")
+    run:
+        run_yammbs_benchmarking(workflow_config)
+
+rule plot_industry_benchmark:
+    input:
+        str(workflow_config.benchmarking_dir) + "/icrmsd.csv"
+    run:
+        plot_benchmark()
+
+# rule run_biaryl_torsion_benchmark:
+#     input:
+#         workflow_config.output_ff_path
+#     output:
+#         protected("benchmarking/torsion_benchmarks/rowley_biaryl/oputput/torsions.png")
+#     run:
+#         run_torsion_benchmark(config=workflow_config,
+#                               sqlite_file="benchmarking/torsion_benchmarks/rowley_biaryl/output/torsion-data.sqlite",
+#                               output_dir="benchmarking/torsion_benchmarks/rowley_biaryl/output",
+#                              )
+
+rule run_torsion_benchmark:
+    input:
+        workflow_config.output_ff_path
+    output:
+        "benchmarking/torsion_benchmarks/{benchmark}/output/torsions.png"
+    params:
+        sqlite_file="benchmarking/torsion_benchmarks/{benchmark}/output/torsion-data.sqlite",
+        torsion_data_json="benchmarking/torsion_benchmarks/{benchmark}/input_data/qca-torsion-data.json",
+        output_dir="benchmarking/torsion_benchmarks/{benchmark}/output"
+    run:
+        run_torsion_benchmark(
+            config=workflow_config,
+            torsion_data_json=params.torsion_data_json,
+            sqlite_file=params.sqlite_file,
+            output_dir=params.output_dir,
+        )
+
+rule all:
+    input:
+        "benchmarking/torsion_benchmarks/rowley_biaryl/output/torsions.png",
+        "benchmarking/torsion_benchmarks/torsionnet_500/output/torsions.png"

@@ -20,7 +20,7 @@ import smee
 from loguru import logger
 
 from models import WorkflowConfig
-
+from convert_ff import pt_file_to_offxml_with_description
 
 def write_metrics(
     epoch: int,
@@ -222,12 +222,22 @@ def compute_torsion_prior(
 ) -> torch.Tensor:
     """Compute torsion prior and update gradient."""
     if config.torsion_weight > 0.0:
-        k_col_torsion = ff.potentials_by_type["ProperTorsions"].parameter_cols.index(
+        # k_col_torsion = ff.potentials_by_type["ProperTorsions"].parameter_cols.index(
+        #     "k"
+        # )
+        # torsion_prior = (
+        #     ff.potentials_by_type["ProperTorsions"].parameters[:, k_col_torsion]
+        #     - initial_torsions
+        # ).square().sum() * config.torsion_weight
+        # (torsion_grad,) = torch.autograd.grad(torsion_prior, x, create_graph=False)
+        # grad += torsion_grad.detach()
+        k_col_torsion = ff.potentials_by_type["ImproperTorsions"].parameter_cols.index(
             "k"
         )
-        torsion_prior = (
-            ff.potentials_by_type["ProperTorsions"].parameters[:, k_col_torsion]
-            - initial_torsions
+        # Regularise above 10 kcal mol-1
+        torsion_prior = torch.clamp(
+            ff.potentials_by_type["ImproperTorsions"].parameters[:, k_col_torsion] - 10.0,
+            min=0.0,
         ).square().sum() * config.torsion_weight
         (torsion_grad,) = torch.autograd.grad(torsion_prior, x, create_graph=False)
         grad += torsion_grad.detach()
@@ -346,9 +356,10 @@ def train(config: WorkflowConfig) -> None:
                     trainable.to_force_field(x),
                     experiment_dir / f"force-field-epoch-{i}.pt",
                 )
-                plot_loss(
-                    [config],
-                    config.fit_dir / "losses.png",
-                )
 
+    # Save in pt and offxml format, saving in the output ff directory
     torch.save(trainable.to_force_field(x), config.final_torch_ff_path)
+    pt_file_to_offxml_with_description(config)
+    logger.info(
+        f"Saved force field to {config.final_torch_ff_path} and {config.output_ff_path}"
+    )

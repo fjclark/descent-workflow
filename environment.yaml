@@ -32,6 +32,13 @@ dependencies:
   - tensorboardX
   - tbparse
 
+  # Benchmarking
+  - openff-qcsubmit
+  - click-option-group
+  - dask
+  - dask-jobqueue
+  - geometric
+
   # Interface with Espaloma
   - dgl
 
@@ -46,4 +53,5 @@ dependencies:
 # Pip
   - pip:
       - git+https://github.com/thomasjamespope/smee.git
+      - git+https://github.com/openforcefield/yammbs.git
       - deepchem

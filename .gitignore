@@ -177,3 +177,7 @@ cython_debug/
 workflow/data
 workflow/fits
 workflow/.snakemake
+workflow/benchmarking/industry_benchmark/output
+workflow/benchmarking/torsion_benchmarks/torsionnet_500/output
+workflow/benchmarking/torsion_benchmarks/rowley_biaryl/output
+workflow/benchmarking_old

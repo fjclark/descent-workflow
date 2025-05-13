@@ -112,6 +112,18 @@ class WorkflowConfig(BaseModel):
         return f"{self.experiment_name}.offxml"
 
     @property
+    def output_ff_dir(self) -> Path:
+        return Path("output_ff")
+
+    @property
+    def output_ff_path(self) -> Path:
+        return self.output_ff_dir / self.output_ff_name
+
+    @property
+    def benchmarking_dir(self) -> Path:
+        return Path("benchmarking/output") / self.experiment_name
+
+    @property
     def output_torch_ff_name(self) -> str:
         return f"{self.experiment_name}.pt"
 
