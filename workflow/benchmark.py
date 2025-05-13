@@ -187,9 +187,5 @@ def run_torsion_benchmark(config: WorkflowConfig, sqlite_file: str | Path, torsi
         args.extend(["--extra-force-fields", str(ff_file)])
 
     logger.info(f"Running benchmark with args: {args}")
-    try:
-        res = subprocess.run(args, check=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Benchmarking failed with error: {e}")
-        breakpoint()
+    res = subprocess.run(args, check=True)
     logger.info(f"Benchmark complete. Results saved to {output_dir}", flush=True)
