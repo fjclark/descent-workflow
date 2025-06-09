@@ -1,27 +1,30 @@
 """Functionality for file format interconversion, e.g. between .pt and .offxml force fields."""
 
-from openff.toolkit import ForceField
-import torch
-import descent.utils.reporting
-from pathlib import Path
-from models import WorkflowConfig
-from smee import TensorForceField
 from copy import deepcopy
-from openff.units import unit as off_unit
+from pathlib import Path
 
+import descent.utils.reporting
 import loguru
+import torch
+from models import WorkflowConfig
+from openff.toolkit import ForceField
+from openff.units import unit as off_unit
+from smee import TensorForceField
 
 logger = loguru.logger
 
+
 # Mainly written by Josh Horton
-def pt_ff_to_off_ff(base_force_field: ForceField, tensor_force_field: TensorForceField) -> ForceField:
+def pt_ff_to_off_ff(
+    base_force_field: ForceField, tensor_force_field: TensorForceField
+) -> ForceField:
     """Convert the FF from pt to OFF ForceField format."""
 
     # Copy the base force field to avoid modifying it
     base_force_field = deepcopy(base_force_field)
 
     for potential in tensor_force_field.potentials:
-        potential_type = potential.type
+        potential_type = str(potential.type)
 
         parameter_names = potential.parameter_cols
         parameter_units = potential.parameter_units
@@ -34,16 +37,24 @@ def pt_ff_to_off_ff(base_force_field: ForceField, tensor_force_field: TensorForc
                 opt_parameters = potential.parameters[i].detach().cpu()
                 for j, (p, unit) in enumerate(zip(parameter_names, parameter_units)):
                     setattr(ff_parameter, p, opt_parameters[j] * unit)
-        
+
         if potential_type in ["LinearBonds", "LinearAngles"]:
-            handler = base_force_field.get_parameter_handler(potential_type.replace("Linear", ""))
+            handler = base_force_field.get_parameter_handler(
+                potential_type.replace("Linear", "")
+            )
             for i in range(len(potential.parameters)):
                 smirks = potential.parameter_keys[i].id
                 ff_parameter = handler[smirks]
                 opt_linear_parameters = potential.parameters[i].detach().cpu()
                 # Convert linear parameters back to harmonic parameters
-                k1, k2 = opt_linear_parameters[0].item(), opt_linear_parameters[1].item()
-                b1, b2 = opt_linear_parameters[2].item(), opt_linear_parameters[3].item()
+                k1, k2 = (
+                    opt_linear_parameters[0].item(),
+                    opt_linear_parameters[1].item(),
+                )
+                b1, b2 = (
+                    opt_linear_parameters[2].item(),
+                    opt_linear_parameters[3].item(),
+                )
                 k = k1 + k2
                 b = (b1 * k1 + b2 * k2) / k
                 logger.info(f"Converting {smirks} from linear to harmonic")
@@ -61,7 +72,7 @@ def pt_ff_to_off_ff(base_force_field: ForceField, tensor_force_field: TensorForc
                     elif angle > 180 * off_unit.degree:
                         angle = 360 * off_unit.degree - angle
                     ff_parameter.angle = angle
-        
+
         elif potential_type in ["ProperTorsions"]:
             handler = base_force_field.get_parameter_handler(potential_type)
             # we need to collect the k values into a list accross the entries
@@ -72,9 +83,9 @@ def pt_ff_to_off_ff(base_force_field: ForceField, tensor_force_field: TensorForc
                     collection_data[smirks] = {}
                 opt_parameters = potential.parameters[i].detach().cpu()
                 # find k and the perodicity
-                k_index = parameter_names.index('k')
+                k_index = parameter_names.index("k")
                 k = opt_parameters[k_index] * parameter_units[k_index]
-                p = int(opt_parameters[parameter_names.index('periodicity')])
+                p = int(opt_parameters[parameter_names.index("periodicity")])
                 collection_data[smirks][p] = k
             # now update the force field
             for smirks, tor_data in collection_data.items():
@@ -91,21 +102,43 @@ def pt_ff_to_off_ff(base_force_field: ForceField, tensor_force_field: TensorForc
             for i in range(len(potential.parameters)):
                 smirks = potential.parameter_keys[i].id
                 opt_parameters = potential.parameters[i].detach().cpu()
-                k_index = parameter_names.index('k')
+                k_index = parameter_names.index("k")
                 ff_parameter = handler[smirks]
                 ff_parameter.k = [opt_parameters[k_index] * parameter_units[k_index]]
+
+        if potential_type in ["Electrostatics", "vdW"]:
+            logger.warning(
+                f"Only setting the attributes (and not the parameters) for {potential_type} potentials."
+            )
+            handler = base_force_field.get_parameter_handler(potential_type)
+            for attr_name, attr_unit, attr_val in zip(
+                potential.attribute_cols,
+                potential.attribute_units,
+                potential.attributes,
+                strict=True,
+            ):
+                # Convert scale_14 to scale14
+                attr_name = attr_name.replace("_", "")
+                setattr(handler, attr_name, attr_val * attr_unit)
 
     return base_force_field
 
 
-
-def pt_file_to_offxml(base_force_field: str | Path, output: str | Path, tensor_force_field_path: str | Path) -> None:
+def pt_file_to_offxml(
+    base_force_field: str | Path,
+    output: str | Path,
+    tensor_force_field_path: str | Path,
+) -> None:
     """Convert the FF from pt to offxml format."""
 
-    logger.info(f"Converting {tensor_force_field_path} to OFF format with base {base_force_field}")
+    logger.info(
+        f"Converting {tensor_force_field_path} to OFF format with base {base_force_field}"
+    )
 
     tensor_ff = torch.load(tensor_force_field_path)
-    base_ff = ForceField(base_force_field, load_plugins=True, allow_cosmetic_attributes=True)
+    base_ff = ForceField(
+        base_force_field, load_plugins=True, allow_cosmetic_attributes=True
+    )
 
     ff = pt_ff_to_off_ff(base_ff, tensor_ff)
     ff.to_file(output)
@@ -121,7 +154,7 @@ def pt_file_to_offxml_with_description(config: WorkflowConfig) -> None:
     pt_file_to_offxml(
         base_force_field=config.starting_force_field_path,
         tensor_force_field_path=config.final_torch_ff_path,
-        output=config.output_ff_path
+        output=config.output_ff_path,
     )
 
     # Save a description of the force field

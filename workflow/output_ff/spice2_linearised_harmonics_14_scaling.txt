@@ -1,0 +1,1 @@
+Fit to SPICE 2 (filtered out larger forces) with linearised harmonics, allowing the 14 LJ and electrostatic scaling factors to be fitted. Terminated after 700 epochs due to power outage.
