@@ -66,10 +66,16 @@ def pt_ff_to_off_ff(
                     # Convert to kcal mol-1 deg -2 (from kcal mol-1 rad -2)
                     ff_parameter.k = k * parameter_units[0]
                     angle = (b * parameter_units[2]).to(off_unit.degree)
-                    # If outside the range of 0 to 180 degrees, mirror the angle
+                    # Reflect the angle if it is negative
                     if angle < 0 * off_unit.degree:
                         angle = -angle
-                    elif angle > 180 * off_unit.degree:
+                    # Ensure the angle is within 0 to 360 degrees
+                    elif angle > 360 * off_unit.degree:
+                        angle = angle - (angle // (360 * off_unit.degree)) * (
+                            360 * off_unit.degree
+                        )
+                    # Reflect the angle about 180 degrees if it is greater than 180
+                    if angle > 180 * off_unit.degree:
                         angle = 360 * off_unit.degree - angle
                     ff_parameter.angle = angle
 
