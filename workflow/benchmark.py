@@ -171,6 +171,8 @@ def run_torsion_benchmark(config: WorkflowConfig, sqlite_file: str | Path, torsi
     if not ff_files:
         raise ValueError(f"No force field files found in {config.output_ff_dir}")
     absolute_ff_files = [ff_file.absolute() for ff_file in ff_files]
+    torsion_data_json = Path(torsion_data_json).absolute()
+    sqlite_file = Path(sqlite_file).absolute()
 
     # Run benchmark script with subprocess
     args = [
@@ -187,5 +189,5 @@ def run_torsion_benchmark(config: WorkflowConfig, sqlite_file: str | Path, torsi
         args.extend(["--extra-force-fields", str(ff_file)])
 
     logger.info(f"Running benchmark with args: {args}")
-    res = subprocess.run(args, check=True)
+    res = subprocess.run(args, check=True, cwd=output_dir)
     logger.info(f"Benchmark complete. Results saved to {output_dir}", flush=True)
