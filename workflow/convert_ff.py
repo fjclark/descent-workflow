@@ -29,7 +29,7 @@ def pt_ff_to_off_ff(
         parameter_names = potential.parameter_cols
         parameter_units = potential.parameter_units
 
-        if potential_type in ["Bonds", "Angles"]:
+        if potential_type in ["Bonds", "Angles", "UreyBradleys"]:
             handler = base_force_field.get_parameter_handler(potential_type)
             for i in range(len(potential.parameters)):
                 smirks = potential.parameter_keys[i].id
@@ -38,7 +38,7 @@ def pt_ff_to_off_ff(
                 for j, (p, unit) in enumerate(zip(parameter_names, parameter_units)):
                     setattr(ff_parameter, p, opt_parameters[j] * unit)
 
-        if potential_type in ["LinearBonds", "LinearAngles"]:
+        if potential_type in ["LinearBonds", "LinearAngles", "LinearUreyBradleys"]:
             handler = base_force_field.get_parameter_handler(
                 potential_type.replace("Linear", "")
             )
@@ -59,7 +59,7 @@ def pt_ff_to_off_ff(
                 b = (b1 * k1 + b2 * k2) / k
                 logger.info(f"Converting {smirks} from linear to harmonic")
                 logger.info(f"Parameter names: {parameter_names}")
-                if potential_type == "LinearBonds":
+                if potential_type in ["LinearBonds", "LinearUreyBradleys"]:
                     ff_parameter.k = k * parameter_units[0]
                     ff_parameter.length = b * parameter_units[2]
                 elif potential_type == "LinearAngles":

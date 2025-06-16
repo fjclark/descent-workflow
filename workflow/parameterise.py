@@ -7,23 +7,21 @@ https://github.com/ntBre/descent-ff/blob/main/energy-force/parameterize.py
 https://github.com/jthorton/SPICE-SMEE/
 """
 
+import copy
 import functools
 import json
 import multiprocessing
 
+import numpy as np
 import openff.interchange
 import openff.toolkit
 import smee
 import smee.converters
 import torch
 import tqdm
-from openff.units import unit as off_unit
-import copy
-import numpy as np
-
-from models import WorkflowConfig
-
 from loguru import logger
+from models import WorkflowConfig
+from openff.units import unit as off_unit
 
 _ANGSTROM = off_unit.angstrom
 _RADIANS = off_unit.radians
@@ -39,9 +37,9 @@ def linearize_harmonics(
     ff_copy = copy.deepcopy(ff)
     ff_copy.potentials = []
     for potential in ff.potentials:
-        if potential.type in {"Bonds"}:
+        if potential.type in {"Bonds", "UreyBradleys"}:
             new_potential = copy.deepcopy(potential)
-            new_potential.type = "LinearBonds"
+            new_potential.type = "Linear" + potential.type
             new_potential.fn = "(k1+k2)/2*(r-(k1*length1+k2*length2)/(k1+k2))**2"
             new_potential.parameter_cols = ("k1", "k2", "b1", "b2")
             new_params = []
@@ -105,7 +103,7 @@ def build_interchange(
 ) -> openff.interchange.Interchange | None:
     try:
         return openff.interchange.Interchange.from_smirnoff(
-            openff.toolkit.ForceField(*force_field_paths),
+            openff.toolkit.ForceField(*force_field_paths, load_plugins=True),
             openff.toolkit.Molecule.from_mapped_smiles(
                 smiles, allow_undefined_stereo=True
             ).to_topology(),
@@ -150,6 +148,10 @@ def apply_parameters(
             topology.parameters["LinearAngles"] = copy.deepcopy(
                 topology.parameters["Angles"]
             )
+            if "UreyBradleys" in topology.parameters:
+                topology.parameters["LinearUreyBradleys"] = copy.deepcopy(
+                    topology.parameters["UreyBradleys"]
+                )
 
     return force_field, {
         smiles: topology for smiles, topology in zip(unique_smiles, topologies)

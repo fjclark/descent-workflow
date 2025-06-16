@@ -97,50 +97,6 @@
         <Bond smirks="[#6X2:1]-[#1:2]" id="b86" length="1.0709717733586845 * angstrom ** 1" k="932.0731390842975 * angstrom ** -2 * kilocalorie_per_mole ** 1"></Bond>
         <Bond smirks="[#7:1]-[#1:2]" id="b87" length="1.018647518192375 * angstrom ** 1" k="962.0744936129423 * angstrom ** -2 * kilocalorie_per_mole ** 1"></Bond>
         <Bond smirks="[#8:1]-[#1:2]" id="b88" length="0.9752471234773508 * angstrom ** 1" k="1076.8419485993734 * angstrom ** -2 * kilocalorie_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#6X4]-[*:2]" id="a1_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#1:1]-[#6X4]-[#1:2]" id="a2_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*;r3:1]~;@[*;r3]~;!@[*:2]" id="a4_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~;!@[*;r3]~;!@[*:2]" id="a5_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#1:1]-[*;r3]~;!@[*:2]" id="a6_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#6r4:1]-;@[#6r4]-;@[#6r4:2]" id="a7_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[!#1:1]-[#6r4]-;!@[!#1:2]" id="a8_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[!#1:1]-[#6r4]-;!@[#1:2]" id="a9_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#6X3]~[*:2]" id="a10_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#1:1]-[#6X3]~[*:2]" id="a11_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#1:1]-[#6X3]-[#1:2]" id="a12_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*;r6:1]~;@[*;r5]~;@[*;r5;x2:2]" id="a13_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*;r6:1]~;@[*;r5;x4,*;r5;X4]~;@[*;r5;x2:2]" id="a13a_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~;!@[*;X3;r5]~;@[*;r5:2]" id="a14_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#8X1:1]~[#6X3]~[#8:2]" id="a15_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#6X2]~[*:2]" id="a16_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#7X2]~[*:2]" id="a17_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#7X4,#7X3,#7X2-1]~[*:2]" id="a18_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]@-[r!r6;#7X4,#7X3,#7X2-1]@-[*:2]" id="a18a_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#1:1]-[#7X4,#7X3,#7X2-1]-[*:2]" id="a19_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#7X3$(*~[#6X3,#6X2,#7X2+0])]~[*:2]" id="a20_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#1:1]-[#7X3$(*~[#6X3,#6X2,#7X2+0])]-[*:2]" id="a21_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#7X2+0]~[*:2]" id="a22_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#7X2+0]~[#6X2:2](~[#16X1])" id="a23_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#1:1]-[#7X2+0]~[*:2]" id="a24_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#6,#7,#8:1]-[#7X3](~[#8X1])~[#8X1:2]" id="a25_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#8X1:1]~[#7X3]~[#8X1:2]" id="a26_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#7X2]~[#7X1:2]" id="a27_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]-[#8]-[*:2]" id="a28_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#6X3,#7:1]~;@[#8;r]~;@[#6X3,#7:2]" id="a29_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]-[#8X2+1]=[*:2]" id="a30_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#16X4]~[*:2]" id="a31_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]-[#16X4,#16X3+0]~[*:2]" id="a32_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#16X3$(*~[#8X1,#7X2])]~[*:2]" id="a33_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#16X2,#16X3+1]~[*:2]" id="a34_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]=[#16X2]=[*:2]" id="a35_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]=[#16X2]=[#8:2]" id="a36_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#6X3:1]-[#16X2]-[#6X3:2]" id="a37_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#6X3:1]-[#16X2]-[#6X4:2]" id="a38_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[#6X3:1]-[#16X2]-[#1:2]" id="a39_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*:1]~[#15]~[*:2]" id="a40_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*;r5:1]1@[*;r5]@[*;r5:2]@[*;r5]@[*;r5]1" id="a41_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*;r5:1]1@[#16;r5]@[*;r5:2]@[*;r5]@[*;r5]1" id="a41a_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
-        <Bond smirks="[*;r3:1]1~;@[*;r3]~;@[*;r3:2]1" id="a3_urey_bradley" length="2.0 * angstrom ** 1" k="0.0 * angstrom ** -2 * kilocalories_per_mole ** 1"></Bond>
     </Bonds>
     <Angles version="0.3" potential="harmonic">
         <Angle smirks="[*:1]~[#6X4:2]-[*:3]" angle="109.93769974205294 * degree ** 1" k="133.6820666364941 * kilocalorie_per_mole ** 1 * radian ** -2" id="a1"></Angle>
@@ -433,4 +389,50 @@
         <LibraryCharge smirks="[#1:1]-[#8X2H2+0]-[#1]" charge1="0.417 * elementary_charge ** 1" id="q-tip3p-H"></LibraryCharge>
     </LibraryCharges>
     <ToolkitAM1BCC version="0.3"></ToolkitAM1BCC>
+    <UreyBradleys version="0.3">
+        <UreyBradley smirks="[*:1]~[#6X4]-[*:2]" id="a1_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#1:1]-[#6X4]-[#1:2]" id="a2_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*;r3:1]~;@[*;r3]~;!@[*:2]" id="a4_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~;!@[*;r3]~;!@[*:2]" id="a5_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#1:1]-[*;r3]~;!@[*:2]" id="a6_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#6r4:1]-;@[#6r4]-;@[#6r4:2]" id="a7_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[!#1:1]-[#6r4]-;!@[!#1:2]" id="a8_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[!#1:1]-[#6r4]-;!@[#1:2]" id="a9_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#6X3]~[*:2]" id="a10_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#1:1]-[#6X3]~[*:2]" id="a11_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#1:1]-[#6X3]-[#1:2]" id="a12_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*;r6:1]~;@[*;r5]~;@[*;r5;x2:2]" id="a13_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*;r6:1]~;@[*;r5;x4,*;r5;X4]~;@[*;r5;x2:2]" id="a13a_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~;!@[*;X3;r5]~;@[*;r5:2]" id="a14_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#8X1:1]~[#6X3]~[#8:2]" id="a15_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#6X2]~[*:2]" id="a16_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#7X2]~[*:2]" id="a17_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#7X4,#7X3,#7X2-1]~[*:2]" id="a18_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]@-[r!r6;#7X4,#7X3,#7X2-1]@-[*:2]" id="a18a_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#1:1]-[#7X4,#7X3,#7X2-1]-[*:2]" id="a19_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#7X3$(*~[#6X3,#6X2,#7X2+0])]~[*:2]" id="a20_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#1:1]-[#7X3$(*~[#6X3,#6X2,#7X2+0])]-[*:2]" id="a21_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#7X2+0]~[*:2]" id="a22_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#7X2+0]~[#6X2:2](~[#16X1])" id="a23_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#1:1]-[#7X2+0]~[*:2]" id="a24_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#6,#7,#8:1]-[#7X3](~[#8X1])~[#8X1:2]" id="a25_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#8X1:1]~[#7X3]~[#8X1:2]" id="a26_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#7X2]~[#7X1:2]" id="a27_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]-[#8]-[*:2]" id="a28_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#6X3,#7:1]~;@[#8;r]~;@[#6X3,#7:2]" id="a29_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]-[#8X2+1]=[*:2]" id="a30_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#16X4]~[*:2]" id="a31_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]-[#16X4,#16X3+0]~[*:2]" id="a32_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#16X3$(*~[#8X1,#7X2])]~[*:2]" id="a33_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#16X2,#16X3+1]~[*:2]" id="a34_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]=[#16X2]=[*:2]" id="a35_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]=[#16X2]=[#8:2]" id="a36_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#6X3:1]-[#16X2]-[#6X3:2]" id="a37_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#6X3:1]-[#16X2]-[#6X4:2]" id="a38_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[#6X3:1]-[#16X2]-[#1:2]" id="a39_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*:1]~[#15]~[*:2]" id="a40_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*;r5:1]1@[*;r5]@[*;r5:2]@[*;r5]@[*;r5]1" id="a41_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*;r5:1]1@[#16;r5]@[*;r5:2]@[*;r5]@[*;r5]1" id="a41a_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+        <UreyBradley smirks="[*;r3:1]1~;@[*;r3]~;@[*;r3:2]1" id="a3_urey_bradley" k="0.01 * angstrom ** -2 * kilocalories_per_mole ** 1" length="2.0 * angstrom ** 1"></UreyBradley>
+    </UreyBradleys>
 </SMIRNOFF>
