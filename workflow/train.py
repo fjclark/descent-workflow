@@ -1,29 +1,29 @@
 """Train the force field. Mainly from https://github.com/jthorton/SPICE-SMEE/"""
 
-import datasets
-import tensorboardX
-import torch
-
-import descent.optim
-import descent.targets.energy
-import descent.utils.loss
-import descent.utils.reporting
-import descent.train
 import math
-import more_itertools
 import pprint
 from pathlib import Path
-from tbparse import SummaryReader
+from typing import Iterator
+
+import datasets
+import descent.optim
+import descent.targets.energy
+import descent.train
+import descent.utils.loss
+import descent.utils.reporting
 import matplotlib.pyplot as plt
+import more_itertools
 import smee
-
-from loguru import logger
-
-from models import WorkflowConfig
+import tensorboardX
+import torch
 from convert_ff import pt_file_to_offxml_with_description
+from loguru import logger
+from models import WorkflowConfig
+from tbparse import SummaryReader
+
 
 def write_metrics(
-    epoch: int,
+    epoch: float,
     loss: torch.Tensor,
     loss_energy: torch.Tensor,
     loss_forces: torch.Tensor,
@@ -33,7 +33,7 @@ def write_metrics(
     loss_test_forces: torch.Tensor,
     prior_k_torsions_test: torch.Tensor,
     writer: tensorboardX.SummaryWriter,
-)-> None:
+) -> None:
     logger.info(
         f"epoch={epoch} loss_train={loss.detach().item():.6f}, loss_test={loss_test.detach().item():.6f}",
         flush=True,
@@ -163,10 +163,8 @@ def get_losses(
         None,
     )
 
-    for batch_ids in more_itertools.batched(
-        [i for i in range(len(dataset))], config.batch_size
-    ):
-        batch = dataset.select(indices=batch_ids)
+    for batch in dataset_batch_iterator(dataset, config.batch_size):
+
         true_batch_size = len(dataset)
 
         cuda_batch = prepare_cuda_batch(batch)
@@ -198,6 +196,19 @@ def get_losses(
     x.grad = grad
 
     return total_loss, energy_loss, force_loss, torsion_prior
+
+
+def dataset_batch_iterator(
+    dataset: datasets.Dataset, batch_size: int, shuffle: bool = True
+) -> Iterator[datasets.Dataset]:
+    """Yield batches of data from the dataset."""
+    if shuffle:
+        dataset = dataset.shuffle(seed=42)
+
+    for batch_ids in more_itertools.batched(
+        [i for i in range(len(dataset))], batch_size
+    ):
+        yield dataset.select(indices=batch_ids)
 
 
 def prepare_cuda_batch(batch: list) -> list:
@@ -235,10 +246,16 @@ def compute_torsion_prior(
             "k"
         )
         # Regularise above 10 kcal mol-1
-        torsion_prior = torch.clamp(
-            ff.potentials_by_type["ImproperTorsions"].parameters[:, k_col_torsion] - 10.0,
-            min=0.0,
-        ).square().sum() * config.torsion_weight
+        torsion_prior = (
+            torch.clamp(
+                ff.potentials_by_type["ImproperTorsions"].parameters[:, k_col_torsion]
+                - 10.0,
+                min=0.0,
+            )
+            .square()
+            .sum()
+            * config.torsion_weight
+        )
         (torsion_grad,) = torch.autograd.grad(torsion_prior, x, create_graph=False)
         grad += torsion_grad.detach()
     else:
@@ -318,40 +335,47 @@ def train(config: WorkflowConfig) -> None:
         initial_torsions = get_initial_torsions(force_field)
 
         for i in range(config.n_epochs):
-            losses: dict[str, list[torch.Tensor]] = {"train": [], "test": []}
+            n_minibatches = math.ceil(len(dataset_train) / config.minibatch_size)
+            for j, minibatch in enumerate(
+                dataset_batch_iterator(dataset_train, config.minibatch_size)
+            ):
+                logger.info(f"Epoch {i}, minibatch {j} of {n_minibatches}")
 
-            for dataset_name, dataset in {
-                "train": dataset_train,
-                "test": dataset_test,
-            }.items():
-                losses[dataset_name].extend(
-                    get_losses(
-                        config,
-                        trainable,
-                        x,
-                        dataset,
-                        topologies,
-                        initial_torsions,
+                losses: dict[str, list[torch.Tensor]] = {"train": [], "test": []}
+
+                for dataset_name, dataset in {
+                    "train": minibatch,
+                    "test": dataset_test,
+                }.items():
+
+                    losses[dataset_name].extend(
+                        get_losses(
+                            config,
+                            trainable,
+                            x,
+                            dataset,
+                            topologies,
+                            initial_torsions,
+                        )
                     )
+                    if dataset_name == "train":
+                        optimizer.step()
+
+                    optimizer.zero_grad()
+
+                write_metrics(
+                    i * n_minibatches + j,
+                    *losses["train"],
+                    *losses["test"],
+                    writer,
                 )
-                if dataset_name == "train":
-                    optimizer.step()
 
-                optimizer.zero_grad()
+                plot_loss(
+                    [config],
+                    config.fit_dir / "losses.png",
+                )
 
-            write_metrics(
-                i,
-                *losses["train"],
-                *losses["test"],
-                writer,
-            )
-
-            plot_loss(
-                [config],
-                config.fit_dir / "losses.png",
-            )
-
-            if i % 10 == 0:
+            if i % 1 == 0:
                 torch.save(
                     trainable.to_force_field(x),
                     experiment_dir / f"force-field-epoch-{i}.pt",

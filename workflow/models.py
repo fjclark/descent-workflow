@@ -1,8 +1,9 @@
 """Pydantic models. These will be stored as, and read from yaml files."""
 
-from pydantic import BaseModel, Field, validator
-import yaml
 from pathlib import Path
+
+import yaml
+from pydantic import BaseModel, Field, validator
 
 
 class WorkflowConfig(BaseModel):
@@ -36,6 +37,8 @@ class WorkflowConfig(BaseModel):
     )
 
     batch_size: int = Field(default=500, description="Batch size for training.")
+
+    minibatch_size: int = Field(default=256, description="Minibatch size for training.")
 
     n_epochs: int = Field(default=1000, description="Number of epochs for training.")
 
