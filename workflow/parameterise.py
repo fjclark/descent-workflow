@@ -37,7 +37,8 @@ def linearize_harmonics(
     ff_copy = copy.deepcopy(ff)
     ff_copy.potentials = []
     for potential in ff.potentials:
-        if potential.type in {"Bonds", "UreyBradleys"}:
+        # if potential.type in {"Bonds", "UreyBradleys"}:
+        if potential.type in {"Bonds"}:
             new_potential = copy.deepcopy(potential)
             new_potential.type = "Linear" + potential.type
             new_potential.fn = "(k1+k2)/2*(r-(k1*length1+k2*length2)/(k1+k2))**2"

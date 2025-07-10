@@ -203,7 +203,7 @@ def dataset_batch_iterator(
 ) -> Iterator[datasets.Dataset]:
     """Yield batches of data from the dataset."""
     if shuffle:
-        dataset = dataset.shuffle(seed=42)
+        dataset = dataset.shuffle()
 
     for batch_ids in more_itertools.batched(
         [i for i in range(len(dataset))], batch_size
@@ -273,7 +273,7 @@ def plot_loss(configs: list[WorkflowConfig], output_path: Path) -> None:
 
     # Three plots on one level
     with plt.style.context("ggplot"):
-        fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+        fig, axs = plt.subplots(1, 3, figsize=(13, 4))
         scalar_names = {
             "Total Loss": {"Train": "loss", "Test": "loss_test"},
             "Force Loss": {"Train": "loss_forces", "Test": "loss_test_forces"},
@@ -294,13 +294,12 @@ def plot_loss(configs: list[WorkflowConfig], output_path: Path) -> None:
                     )
 
             axs[i].set_title(title)
-            axs[i].set_xlabel("Epoch")
+            axs[i].set_xlabel("Batch")
             axs[i].set_ylabel("Loss")
             if i == 2:
                 axs[i].legend(loc="upper right", bbox_to_anchor=(1.2, 1.0))
 
-        fig.tight_layout()
-        fig.savefig(str(output_path), dpi=300)
+        fig.savefig(str(output_path), dpi=900)
         plt.close(fig)
 
 
