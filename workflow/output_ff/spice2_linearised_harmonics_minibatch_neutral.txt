@@ -1,0 +1,1 @@
+Fit to SPICE 2 (filtered out larger forces) with linearised harmonics, with minibatching (size 256), and only fit to neutral molecules.
