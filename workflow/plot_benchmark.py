@@ -65,14 +65,7 @@ def load_bench(d: Path, ids_to_remove: list[int] | None = None) -> pandas.DataFr
 
 
 def load_benches(ffs, ids_to_remove: list[int]) -> list[pandas.DataFrame]:
-    ret = list()
-    for ff in ffs:
-        df = load_bench(Path(ff), ids_to_remove)
-        for d in ffs[1:]:
-            df = pandas.concat([df, load_bench(Path(d), ids_to_remove)])
-        ret.append(df)
-
-    return ret
+    return [load_bench(Path(ff), ids_to_remove) for ff in ffs]
 
 
 def merge_metrics(dfs, names, metric: str):
@@ -99,6 +92,10 @@ def plot_ddes(dfs: list[pandas.DataFrame], names, out_dir):
         alpha=0.8,
     )
     label = "DDE (kcal mol$^{-1}$)"
+    # Get the auto-created legend from seaborn and move it outside the plot
+    leg = axis.get_legend()
+    if leg is not None:
+        leg.set_bbox_to_anchor((1, 1.05))
     ax.set_xlabel(label)
     pyplot.savefig(f"{out_dir}/dde.png", dpi=300, bbox_inches="tight")
     pyplot.close()
@@ -108,7 +105,10 @@ def plot_ddes(dfs: list[pandas.DataFrame], names, out_dir):
     # Plot cumulative distribution function (CDF)
     figure, axis = pyplot.subplots(figsize=(6, 4))
     sea.ecdfplot(data=abs_ddes, ax=axis)
-    axis.set_xlim((0, 9))
+    leg = axis.get_legend()
+    if leg is not None:
+        leg.set_bbox_to_anchor((1.1, 0.9))
+    axis.set_xlim((-0.1, 8))
     axis.set_xlabel("Absolute DDE (kcal mol$^{-1}$)")
     pyplot.savefig(f"{out_dir}/dde_cdf.png", dpi=300, bbox_inches="tight")
     pyplot.close()
@@ -118,17 +118,21 @@ def plot_rmsds(dfs: list[pandas.DataFrame], names, out_dir):
     figure, axis = pyplot.subplots(figsize=(6, 4))
     rmsds = merge_metrics(dfs, names, "rmsd")
     ax = sea.kdeplot(data=numpy.log10(rmsds.iloc[:, 1:]))
-    # ax = sea.kdeplot(data=rmsds.iloc[:, 1:])
-    # ax.set_xlim((-0.02, 1.5))
     ax.set_xlim((-2.0, 0.7))
     ax.set_xlabel("Log RMSD")
+    # Get the auto-created legend from seaborn and move it outside the plot
+    leg = axis.get_legend()
+    if leg is not None:
+        leg.set_bbox_to_anchor((1, 1.05))
     pyplot.savefig(f"{out_dir}/rmsd.png", dpi=300, bbox_inches="tight")
     pyplot.close()
 
     figure, axis = pyplot.subplots(figsize=(6, 4))
-    ax = sea.ecdfplot(rmsds.iloc[:, 1:])
-    ax.set_xlim((0, 1.25))
-    ax.set_xlabel("RMSD (Å)")
+    for col in rmsds.columns[1:]:
+        sea.ecdfplot(rmsds[col], label=col, ax=axis)
+    axis.set_xlim((0, 1.25))
+    axis.set_xlabel("RMSD (Å)")
+    axis.legend(loc="upper left", bbox_to_anchor=(1, 1.05))
     pyplot.savefig(f"{out_dir}/rmsd_cdf.png", dpi=300, bbox_inches="tight")
     pyplot.close()
 
@@ -137,18 +141,22 @@ def plot_tfds(dfs: list[pandas.DataFrame], names, out_dir):
     figure, axis = pyplot.subplots(figsize=(6, 4))
     tfds = merge_metrics(dfs, names, "tfd")
     ax = sea.kdeplot(data=numpy.log10(tfds.iloc[:, 1:]))
-    # ax = sea.kdeplot(data=tfds.iloc[:, 1:])
-    # ax.set_xlim((-0.02, 0.2))
     ax.set_xlim((-4.0, 0.5))
     ax.set_xlabel("Log TFD")
+    # Get the auto-created legend from seaborn and move it outside the plot
+    leg = axis.get_legend()
+    if leg is not None:
+        leg.set_bbox_to_anchor((1, 1.05))
     pyplot.savefig(f"{out_dir}/tfd.png", dpi=300, bbox_inches="tight")
     pyplot.close()
 
     figure, axis = pyplot.subplots(figsize=(6, 4))
-    ax = sea.ecdfplot(tfds.iloc[:, 1:])
-    ax.set_xlim((-0.02, 0.2))
+    for col in tfds.columns[1:]:
+        sea.ecdfplot(tfds[col], label=col, ax=axis)
+    ax = sea.ecdfplot(tfds.iloc[:, 1:], ax=axis)
     ax.set_xlim((0, 0.2))
     ax.set_xlabel("TFD")
+    ax.legend(loc="upper left", bbox_to_anchor=(1, 1.05))
     pyplot.savefig(f"{out_dir}/tfd_cdf.png", dpi=300, bbox_inches="tight")
     pyplot.close()
 
@@ -194,8 +202,8 @@ def plot(ffs, out_dir: str, ids_to_remove_paths: list[Path] = []) -> None:
     for name, df in zip(names, dfs):
         df.to_csv(f"{out_dir}/{name}.csv")
 
-    plot_ddes(dfs, names, out_dir)
     plot_rmsds(dfs, names, out_dir)
+    plot_ddes(dfs, names, out_dir)
     plot_tfds(dfs, names, out_dir)
     plot_icrmsds(dfs, names, out_dir)
 
