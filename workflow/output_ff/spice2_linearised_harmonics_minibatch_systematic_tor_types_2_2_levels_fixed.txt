@@ -1,0 +1,1 @@
+Fit to SPICE 2 (filtered out larger forces) with linearised harmonics, with minibatching (size 256), and torsion types systemically generated based on the training data with two levels of specificity. Fixed so that the bonds/ angles/ impropers come from MSM, rather than OpenFF2.2.0 as in the original.
