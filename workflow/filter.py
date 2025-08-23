@@ -11,21 +11,19 @@ import functools
 import multiprocessing
 
 import datasets
+import descent.targets.energy
 import numpy
 import openff.toolkit
 import openff.units
 import torch
 import tqdm
+from get_data import ESPALOMA_SOURCES
+from loguru import logger
+from models import WorkflowConfig
+from openff.toolkit import Molecule
 from rdkit import Chem
 from rdkit.Chem import rdMolAlign
 from rdkit.ML.Cluster import Butina
-from loguru import logger
-
-import descent.targets.energy
-
-from models import WorkflowConfig
-
-from get_data import ESPALOMA_SOURCES
 
 N_WORKERS = 28
 
@@ -128,5 +126,68 @@ def filter_spice2(config: WorkflowConfig) -> None:
         dataset_size = len(dataset)
         dataset = dataset.filter(lambda d: d["smiles"] in topologies)
         logger.info(f"Removed non-parameterisable: {dataset_size} -> {len(dataset)}")
+
+        dataset.save_to_disk(config.filtered_data_dir / source.name)
+
+
+def is_charged(smiles: str) -> bool:
+    """Check if a molecule is charged."""
+    mol = Molecule.from_mapped_smiles(smiles, allow_undefined_stereo=True)
+    rdmol = mol.to_rdkit()
+    # Get total charge of the molecule
+    total_charge = sum(atom.GetFormalCharge() for atom in rdmol.GetAtoms())
+    return total_charge != 0
+
+
+def has_any_formal_charge(smiles: str) -> bool:
+    """Check if a molecule has any atoms with a formal charge. Note that
+    a molecule with a net charge of 0 can still have atoms with formal charges."""
+    mol = Molecule.from_mapped_smiles(smiles, allow_undefined_stereo=True)
+    rdmol = mol.to_rdkit()
+    return any(atom.GetFormalCharge() != 0 for atom in rdmol.GetAtoms())
+
+
+def filter_neutral_spice2(config: WorkflowConfig) -> None:
+    """Filter out any molecules which can't be parameterised, or are charged."""
+
+    sources = [config.data_dir / "data-train", config.data_dir / "data-test"]
+    logger.info(f"Filtering {sources}")
+
+    for source in sources:
+        dataset = datasets.Dataset.load_from_disk(source)
+        unique_smiles = descent.targets.energy.extract_smiles(dataset)
+
+        _, topologies = torch.load(config.torch_ffs_and_tops_path)
+        topologies = {k: v for k, v in topologies.items() if k in unique_smiles}
+
+        dataset_size = len(dataset)
+        dataset = dataset.filter(lambda d: d["smiles"] in topologies)
+        logger.info(f"Removed non-parameterisable: {dataset_size} -> {len(dataset)}")
+        dataset = dataset.filter(lambda d: not is_charged(d["smiles"]))
+        logger.info(f"Removed charged molecules: {dataset_size} -> {len(dataset)}")
+
+        dataset.save_to_disk(config.filtered_data_dir / source.name)
+
+
+def filter_no_formal_charges_spice2(config: WorkflowConfig) -> None:
+    """Filter out any molecules which can't be parameterised, or have any formal charges on any atoms."""
+
+    sources = [config.data_dir / "data-train", config.data_dir / "data-test"]
+    logger.info(f"Filtering {sources}")
+
+    for source in sources:
+        dataset = datasets.Dataset.load_from_disk(source)
+        unique_smiles = descent.targets.energy.extract_smiles(dataset)
+
+        _, topologies = torch.load(config.torch_ffs_and_tops_path)
+        topologies = {k: v for k, v in topologies.items() if k in unique_smiles}
+
+        dataset_size = len(dataset)
+        dataset = dataset.filter(lambda d: d["smiles"] in topologies)
+        logger.info(f"Removed non-parameterisable: {dataset_size} -> {len(dataset)}")
+        dataset = dataset.filter(lambda d: not has_any_formal_charge(d["smiles"]))
+        logger.info(
+            f"Removed molecules with formal charges: {dataset_size} -> {len(dataset)}"
+        )
 
         dataset.save_to_disk(config.filtered_data_dir / source.name)
