@@ -19,28 +19,24 @@ import logging
 import os
 import time
 import warnings
+from multiprocessing import freeze_support
 
 import click
+import loguru
 from yammbs import MoleculeStore
-from openff.qcsubmit.results import OptimizationResultCollection
-from multiprocessing import freeze_support
+from yammbs.cached_result import CachedResultCollection
 
 # try to suppress stereo warnings - from lily's valence-fitting
 # curate-dataset.py
 logging.getLogger("openff").setLevel(logging.ERROR)
 
 # suppress divide by zero in numpy.log
-warnings.filterwarnings(
-    "ignore", message="divide by zero", category=RuntimeWarning
-)
-
-import loguru
-
-from yammbs.cached_result import CachedResultCollection
+warnings.filterwarnings("ignore", message="divide by zero", category=RuntimeWarning)
 
 logger = loguru.logger
 
 # this code is from Brent's benchmarking repo
+
 
 @click.command()
 @click.option("--forcefield", "-f", default="force-field.offxml")
@@ -56,15 +52,15 @@ def main(forcefield, dataset, sqlite_file, out_dir, procs, invalidate_cache):
         logger.info(f"loading existing database from {sqlite_file}")
         store = MoleculeStore(sqlite_file)
     else:
-        #logger.info(f"loading initial dataset from {dataset}")
-        #opt = OptimizationResultCollection.parse_file(dataset)
+        # logger.info(f"loading initial dataset from {dataset}")
+        # opt = OptimizationResultCollection.parse_file(dataset)
 
-        #logger.info(f"generating database, saving to {sqlite_file}")
-        #store = MoleculeStore.from_qcsubmit_collection(opt, sqlite_file)
-        logger.info(f"loading cached results from {dataset}",flush=True)
+        # logger.info(f"generating database, saving to {sqlite_file}")
+        # store = MoleculeStore.from_qcsubmit_collection(opt, sqlite_file)
+        logger.info(f"loading cached results from {dataset}", flush=True)
         cache = CachedResultCollection.from_json(dataset)
 
-        store=MoleculeStore.from_cached_result_collection(cache,sqlite_file)
+        store = MoleculeStore.from_cached_result_collection(cache, sqlite_file)
 
     logger.info("started optimizing store")
     start = time.time()
@@ -74,14 +70,14 @@ def main(forcefield, dataset, sqlite_file, out_dir, procs, invalidate_cache):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
-    store.get_dde(forcefield,skip_check=True).to_csv(f"{out_dir}/dde.csv")
-    store.get_rmsd(forcefield,skip_check=True).to_csv(f"{out_dir}/rmsd.csv")
-    store.get_tfd(forcefield,skip_check=True).to_csv(f"{out_dir}/tfd.csv")
-    store.get_internal_coordinate_rmsd(forcefield,skip_check=True).to_csv(f"{out_dir}/icrmsd.csv")
-
+    store.get_dde(forcefield, skip_check=True).to_csv(f"{out_dir}/dde.csv")
+    store.get_rmsd(forcefield, skip_check=True).to_csv(f"{out_dir}/rmsd.csv")
+    store.get_tfd(forcefield, skip_check=True).to_csv(f"{out_dir}/tfd.csv")
+    store.get_internal_coordinate_rmsd(forcefield, skip_check=True).to_csv(
+        f"{out_dir}/icrmsd.csv"
+    )
 
 
 if __name__ == "__main__":
     freeze_support()
     main()
-

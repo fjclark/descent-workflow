@@ -1,11 +1,24 @@
 PACKAGE_NAME  := descent-workflow
-CONDA_ENV_RUN := conda run --no-capture-output --name $(PACKAGE_NAME)
+
+# Detect which conda package manager is available
+CONDA_CMD := $(shell \
+	if command -v micromamba >/dev/null 2>&1; then \
+		echo "micromamba"; \
+	elif command -v mamba >/dev/null 2>&1; then \
+		echo "mamba"; \
+	elif command -v conda >/dev/null 2>&1; then \
+		echo "conda"; \
+	else \
+		echo "conda"; \
+	fi)
+
+CONDA_ENV_RUN := $(CONDA_CMD) run -a "" --name $(PACKAGE_NAME)
 
 .PHONY: env lint format
 
 env:
-	mamba create     --name $(PACKAGE_NAME)
-	mamba env update --name $(PACKAGE_NAME) --file environment.yaml
+	$(CONDA_CMD) create     --name $(PACKAGE_NAME)
+	$(CONDA_CMD) env update --name $(PACKAGE_NAME) --file environment.yaml
 	$(CONDA_ENV_RUN) pre-commit install || true
 
 lint:

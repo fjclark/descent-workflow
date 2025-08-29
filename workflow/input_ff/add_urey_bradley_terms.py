@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer
 from openff.toolkit import ForceField
-from openff.toolkit.typing.engines.smirnoff.parameters import AngleType, BondType
+from openff.toolkit.typing.engines.smirnoff.parameters import AngleType
 from openff.units import unit as off_unit
 from smirnoff_plugins.handlers.valence import UreyBradleyHandler
 
