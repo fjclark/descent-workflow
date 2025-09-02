@@ -13,6 +13,7 @@ from parameterise import create_torch_ff_and_top
 from train import train
 from benchmark import get_sage_benchmarking_data, run_yammbs_benchmarking, run_torsion_benchmark
 from utils import get_fn
+from get_data import get_qca_torsion_data
 import os
 
 from loguru import logger
@@ -126,8 +127,19 @@ rule plot_industry_benchmark:
 #                               output_dir="benchmarking/torsion_benchmarks/rowley_biaryl/output",
 #                              )
 
+rule get_alkane_torsion_data:
+    output:
+        "benchmarking/torsion_benchmarks/alkanes/input_data/qca-torsion-data.json"
+    run:
+        get_qca_torsion_data(
+            dataset_name="OpenFF Alkane Torsion Drives v1.0",
+            spec_name="default",
+            output_dir="benchmarking/torsion_benchmarks/alkanes/input_data"
+        )
+
 rule run_torsion_benchmark:
     input:
+        "benchmarking/torsion_benchmarks/{benchmark}/input_data/qca-torsion-data.json",
         workflow_config.output_ff_path
     output:
         "benchmarking/torsion_benchmarks/{benchmark}/output/torsions.png"
