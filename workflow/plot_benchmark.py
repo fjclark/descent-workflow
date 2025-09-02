@@ -22,9 +22,7 @@ logger = loguru.logger
 logging.getLogger("openff").setLevel(logging.ERROR)
 
 # suppress divide by zero in numpy.log
-warnings.filterwarnings(
-    "ignore", message="divide by zero", category=RuntimeWarning
-)
+warnings.filterwarnings("ignore", message="divide by zero", category=RuntimeWarning)
 
 pandas.set_option("display.max_columns", None)
 

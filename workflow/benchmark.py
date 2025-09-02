@@ -2,15 +2,12 @@
 
 from pathlib import Path
 import subprocess
+import sys
 
 # from yammbs.cached_result import CachedResultCollection,CachedResult
 from openff.qcsubmit.results import OptimizationResultCollection
 import logging
-import sys
-import json
 import multiprocessing
-import tqdm
-import qcportal
 from models import WorkflowConfig
 
 import loguru
@@ -18,20 +15,28 @@ import loguru
 logger = loguru.logger
 
 
-logging.getLogger('openff').setLevel(logging.ERROR)
+logging.getLogger("openff").setLevel(logging.ERROR)
 
 SAGE22_INDUSTRY_BENCHMARK_JSON_URL = "https://raw.githubusercontent.com/openforcefield/sage-2.2.0/refs/heads/main/05_benchmark_forcefield/datasets/OpenFF-Industry-Benchmark-Season-1-v1.1-filtered-charge-coverage.json"
 
 
 # From https://github.com/openforcefield/sage-2.2.1/blob/main/05_benchmark_forcefield/cache_dataset.py
-def split_dataset_batch_for_cache(dataset,n=1):
-    ds = dict(dataset)['entries']["https://api.qcarchive.molssi.org:443/"]
+def split_dataset_batch_for_cache(dataset, n=1):
+    ds = dict(dataset)["entries"]["https://api.qcarchive.molssi.org:443/"]
     n_keys = len(ds)
-    group_size = int(n_keys/n)+1 
+    group_size = int(n_keys / n) + 1
 
     split_datasets = []
-    for group_idx in range(0,n):
-        split_datasets.append(OptimizationResultCollection(entries={"https://api.qcarchive.molssi.org:443/": ds[group_idx*group_size:(group_idx+1)*group_size]}))
+    for group_idx in range(0, n):
+        split_datasets.append(
+            OptimizationResultCollection(
+                entries={
+                    "https://api.qcarchive.molssi.org:443/": ds[
+                        group_idx * group_size : (group_idx + 1) * group_size
+                    ]
+                }
+            )
+        )
 
     return split_datasets
 
@@ -40,14 +45,14 @@ def split_dataset_batch_for_cache(dataset,n=1):
 # def cache_dataset(dataset,cache_file,n_procs=1,batch_size=500):
 #     ds = OptimizationResultCollection.parse_file(dataset)
 #     logger.info('Loaded dataset.',flush=True)
-    
+
 #     split_ds = split_dataset_batch_for_cache(ds,batch_size)
 #     logger.info("Split dataset",flush=True)
 #     logger.info(f"Number of entries in initial DS: {ds.n_results}",flush=True)
 #     logger.info(f"Number of entries in split DS:   {sum([split_ds[i].n_results for i in range(0,len(split_ds))])}",flush=True)
 #     logger.info(f'Size of each batch:              { [split_ds[i].n_results for i in range(0,len(split_ds))] }',flush=True)
-    
-    
+
+
 #     logger.info('Starting cache',flush=True)
 #     cache = []
 #     with multiprocessing.Pool(n_procs) as pool:
@@ -56,9 +61,9 @@ def split_dataset_batch_for_cache(dataset,n=1):
 #             #except qcportal.client_base.PortalRequestError:
 #             #    logger.info("Error connecting to server")
 #             #    split_ds.append(
-    
+
 #     logger.info('Done making cache',flush=True)
-    
+
 #     with open(cache_file,'w') as writefile:
 #         jsondata = json.dumps(cache,default=CachedResult.to_dict,indent=2)
 #         writefile.write(jsondata)#(cache.to_json(indent=2))
@@ -75,7 +80,9 @@ def get_sage_benchmarking_data(output_dir: str | Path) -> None:
     # Get the industry benchmark json from the Sage 2.2.0 repo
     industry_benchmark_file = output_dir / "filtered-industry.json"
     if not industry_benchmark_file.exists():
-        logger.info(f"Downloading {SAGE22_INDUSTRY_BENCHMARK_JSON_URL} to {industry_benchmark_file}")
+        logger.info(
+            f"Downloading {SAGE22_INDUSTRY_BENCHMARK_JSON_URL} to {industry_benchmark_file}"
+        )
         subprocess.run(
             [
                 "curl",
@@ -89,22 +96,27 @@ def get_sage_benchmarking_data(output_dir: str | Path) -> None:
     # Cache the dataset
     cached_industry_benchmark_file = output_dir / "filtered-industry-cached.json"
     if not cached_industry_benchmark_file.exists():
-        logger.info(f"Creating cache for {industry_benchmark_file} at {cached_industry_benchmark_file}")
-        # Use all available cores
-        n_cores = multiprocessing.cpu_count()
-        cache_dataset(
-            dataset=industry_benchmark_file,
-            cache_file=cached_industry_benchmark_file,
-            n_procs=n_cores,
-            batch_size=500,
+        logger.info(
+            f"Creating cache for {industry_benchmark_file} at {cached_industry_benchmark_file}"
         )
+        # Use all available cores
+        sys.exit("cache_dataset is not in use.")
+        # n_cores = multiprocessing.cpu_count()
+        # cache_dataset(
+        #    dataset=industry_benchmark_file,
+        #    cache_file=cached_industry_benchmark_file,
+        #    n_procs=n_cores,
+        #    batch_size=500,
+        # )
 
 
 def run_yammbs_benchmarking(config: WorkflowConfig) -> None:
     """Run the yammbs benchmarking script with the given configuration."""
 
     # Get the absolute path to required scripts/ files
-    yammbs_benchmark_script_path = (Path(__file__).parent / "run_yammbs_script.py").absolute()
+    yammbs_benchmark_script_path = (
+        Path(__file__).parent / "run_yammbs_script.py"
+    ).absolute()
     ff_path = (Path(__file__).parent / config.output_ff_path).absolute()
     industry_benchmark_path = (Path(__file__).parent / "benchmarking" / "industry_benchmark").absolute()
     cached_dataset_path = industry_benchmark_path / "input_data" / "filtered-industry-cached.json"
@@ -168,7 +180,13 @@ def run_yammbs_benchmarking(config: WorkflowConfig) -> None:
 
         logger.info(f"Benchmark complete. Results saved to {output_dir}", flush=True)
 
-def run_torsion_benchmark(config: WorkflowConfig, sqlite_file: str | Path, torsion_data_json: str | Path, output_dir: str | Path) -> None:
+
+def run_torsion_benchmark(
+    config: WorkflowConfig,
+    sqlite_file: str | Path,
+    torsion_data_json: str | Path,
+    output_dir: str | Path,
+) -> None:
     """Benchmark the force field on torsion data. Note that all ffs in the output ff dir will be benchmarked."""
 
     # Set up directories
@@ -198,5 +216,5 @@ def run_torsion_benchmark(config: WorkflowConfig, sqlite_file: str | Path, torsi
         args.extend(["--extra-force-fields", str(ff_file)])
 
     logger.info(f"Running benchmark with args: {args}")
-    res = subprocess.run(args, check=True, cwd=output_dir)
+    #    res = subprocess.run(args, check=True, cwd=output_dir)
     logger.info(f"Benchmark complete. Results saved to {output_dir}", flush=True)

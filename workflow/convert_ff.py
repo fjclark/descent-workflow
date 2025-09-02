@@ -3,7 +3,6 @@
 from copy import deepcopy
 from pathlib import Path
 
-import descent.utils.reporting
 import loguru
 import torch
 from models import WorkflowConfig
