@@ -14,6 +14,7 @@ from train import train
 from benchmark import get_sage_benchmarking_data, run_yammbs_benchmarking, run_torsion_benchmark
 from utils import get_fn
 from get_data import get_qca_torsion_data
+from get_data_byte_dance import get_data_byte_dance
 import os
 
 from loguru import logger
@@ -135,6 +136,17 @@ rule get_alkane_torsion_data:
             dataset_name="OpenFF Alkane Torsion Drives v1.0",
             spec_name="default",
             output_dir="benchmarking/torsion_benchmarks/alkanes/input_data"
+        )
+
+rule get_byte_dance_torsion_data:
+    output:
+        "benchmarking/torsion_benchmarks/{dataset_name}/input_data/qca-torsion-data.json"
+    params:
+        dataset_name="{dataset_name}"
+    run:
+        get_data_byte_dance(
+            dataset_name=params.dataset_name,
+            output_dir=f"benchmarking/torsion_benchmarks/{params.dataset_name}/input_data"
         )
 
 rule run_torsion_benchmark:
