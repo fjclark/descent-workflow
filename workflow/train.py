@@ -164,7 +164,6 @@ def get_losses(
     )
 
     for batch in dataset_batch_iterator(dataset, config.batch_size):
-
         true_batch_size = len(dataset)
 
         cuda_batch = prepare_cuda_batch(batch)
@@ -346,7 +345,6 @@ def train(config: WorkflowConfig) -> None:
                     "train": minibatch,
                     "test": dataset_test,
                 }.items():
-
                     losses[dataset_name].extend(
                         get_losses(
                             config,

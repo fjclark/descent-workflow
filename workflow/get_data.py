@@ -355,3 +355,33 @@ def get_data_spice2_force_filtered(data_dir: pathlib.Path | str) -> None:
     # filter_spice2_dataset_by_forces(data_dir)
     split_train_test_spice2(data_dir)
     logger.info("Done getting data for SPICE.")
+
+def get_qca_torsion_data(dataset_name: str,
+                         output_dir: pathlib.Path | str,
+                         spec_name: str = "default") -> None:
+    """Get the QCA torsion data in json format."""
+    from openff.qcsubmit.results import TorsionDriveResultCollection
+    from qcportal import PortalClient
+    from yammbs.torsion.inputs import QCArchiveTorsionDataset
+
+    logger.info(f"Getting QCA torsion data for {dataset_name}...")
+    client = PortalClient("https://api.qcarchive.molssi.org:443", cache_dir=output_dir)
+
+    torsion_dataset = TorsionDriveResultCollection.from_server(
+        client=client,
+        datasets=dataset_name,
+        spec_name=spec_name,
+    )
+
+    dataset = QCArchiveTorsionDataset.from_qcsubmit_collection(torsion_dataset)
+
+    output_dir = pathlib.Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save dataset to json
+    output_json_path = output_dir / "qca-torsion-data.json"
+    output_json_path.write_text(dataset.model_dump_json())
+
+    # Save README with provenance
+    output_text_path = output_dir / "qca-torsion-data-readme.txt"
+    output_text_path.write_text(f"Dataset {dataset_name} with spec {spec_name}.\n")
