@@ -16,14 +16,25 @@ from tqdm import tqdm
 from loguru import logger
 from yammbs.torsion.inputs import QCArchiveTorsionProfile, QCArchiveTorsionDataset
 from openff.interchange import Interchange
+from numpy import typing as npt
 from typing import Literal
 
 SAGE = ForceField("openff-2.2.0.offxml")
+FFS_TO_TEST = [
+    "openff_unconstrained-1.0.0.offxml",
+    "/home/campus.ncl.ac.uk/nfc78/research/smee-spice-valence/descent-workflow/workflow/output_ff/spice2_linearised_harmonics_minibatch_systematic_tor_types_2_2_levels_fixed.offxml",
+    "/home/campus.ncl.ac.uk/nfc78/research/smee-spice-valence/descent-workflow/workflow/output_ff/spice2_linearised_harmonics_minibatch_systematic_tor_types_ring_membership.offxml",
+]
 
 SPACING_MULTIPLES = {
-    "BDTorsionInRing": 15.0,  # Always spaced by 15 degrees
-    "BDTorsionNonRing": 5.0,
+    "BDTorsionNonRing": 15.0,  # Always spaced by 15 degrees
+    "BDTorsionInRing": 5.0,
 }  # Mostly spaced by 10 degrees, but some by 5 degrees
+
+CHECK_ABSOLUTE = {
+    "BDTorsionNonRing": True,
+    "BDTorsionInRing": False,
+}
 
 H5_FILES = {
     "BDTorsionInRing": "BDTorsionInRing.h5",
@@ -161,8 +172,30 @@ def get_angle_periodic_diff(angle1: float, angle2: float) -> float:
     return diff
 
 
+def are_multiples_of_spacing(
+    angles: list[float] | npt.NDArray,
+    spacing_multiple: float = 5.0,
+    tolerance: float = 0.02,
+    n_allowed_deviations: int = 0,
+) -> bool:
+    """Check if all angles are multiples of the given spacing within a tolerance."""
+    is_close = np.isclose(
+        [
+            min(abs(angle % spacing_multiple), abs(angle % -spacing_multiple))
+            for angle in angles
+        ],
+        0,
+        atol=tolerance,
+    )
+
+    return np.sum(~is_close) <= n_allowed_deviations
+
+
 def is_torsion_scan(
-    angles: list[float], spacing_multiple: float = 5.0, tolerance: float = 0.01
+    angles: list[float],
+    spacing_multiple: float = 5.0,
+    tolerance: float = 0.02,
+    check_absolute: bool = False,
 ) -> bool:
     """Check if a list of angles represents a torsion scan with given spacing and tolerance.
     Account for cases where some angles may be missing.
@@ -172,32 +205,41 @@ def is_torsion_scan(
         spacing_multiple (float, optional): The expected spacing should be a multiple of
         this value (in degrees). Defaults to 5.0.
         tolerance (float, optional): Tolerance for spacing check. Defaults to 0.02.
+        check_absolute (bool, optional): If True, check that all angles (not just differences)
+        are multiples of spacing_multiple within tolerance. Defaults to False.
 
     Returns:
         bool: True if the angles represent a torsion scan, False otherwise.
     """
     angles = sorted(angles)
 
+    # Check that the angles all differ by at least spacing_multiple
+    if max(angles) - min(angles) < spacing_multiple - tolerance:
+        return False
+
+    # Check that all angles divide evenly by the spacing
+    if check_absolute:
+        if not are_multiples_of_spacing(
+            angles, spacing_multiple=spacing_multiple, tolerance=tolerance
+        ):
+            return False
+
     angle_diffs = np.array(
         [get_angle_periodic_diff(i, j) for i, j in zip(angles[:-1], angles[1:])]
     )
 
-    # Check if the angle differences are close to the expected multiple
-    multiples = angle_diffs / spacing_multiple
-    # Now divide by the nearest integer and check the result is close to 1.0
-    nearest_int = np.round(multiples)
-    multiples = multiples / nearest_int
-    close_to_spacing = np.isclose(multiples, 1.0, atol=tolerance)
-
-    # Check if the angle differences are close to the expected spacing
-    # close_to_spacing = np.isclose(angle_diffs, spacing, atol=tolerance)
-    n_close = np.sum(close_to_spacing)
-    expected_n_close = len(angles) - 1  # There should be one less diff than angles
-    return n_close == expected_n_close
+    return are_multiples_of_spacing(
+        angle_diffs,
+        spacing_multiple=spacing_multiple,
+        tolerance=tolerance,
+    )
 
 
 def get_dihedral_indices_and_angles(
-    mol: Molecule, name: str, spacing_multiple: float = 5.0
+    mol: Molecule,
+    name: str,
+    spacing_multiple: float = 5.0,
+    check_absolute: bool = False,
 ) -> tuple[tuple[int, int, int, int], list[float]]:
     """For all bonds, get the set of dihedral angles. Pick the set of angles most consistent
     with being a torsion scan (spaced by 15 degrees) and return the corresponding atom indices
@@ -208,6 +250,8 @@ def get_dihedral_indices_and_angles(
         name (str): The name of the molecule (for logging).
         spacing_multiple (float, optional): The expected spacing should be a multiple of
         this value (in degrees). Defaults to 5.0.
+        check_absolute (bool, optional): If True, check that all angles (not just differences)
+        are multiples of spacing_multiple within tolerance. Defaults to False.
 
     Returns:
         tuple[tuple[int, int, int, int], list[float]]: The dihedral atom indices and angles.
@@ -225,11 +269,12 @@ def get_dihedral_indices_and_angles(
     }
 
     # Now, find all sets of indices where the angles are spaced by ~15 degrees.
-    torsion_scans = {}
     torsion_scans = {
         indices: angles
         for indices, angles in angles_by_indices.items()
-        if is_torsion_scan(angles, spacing_multiple=spacing_multiple)
+        if is_torsion_scan(
+            angles, spacing_multiple=spacing_multiple, check_absolute=check_absolute
+        )
     }
 
     if not torsion_scans:
@@ -243,20 +288,25 @@ def get_dihedral_indices_and_angles(
     return list(torsion_scans.items())[0]
 
 
-def can_parameterise_with_sage(mol: Molecule) -> bool:
-    """Check if a molecule can be parameterised with the OpenFF Sage force field.
+def can_parameterise(mol: Molecule, ff_names: list[str]) -> bool:
+    """Check if a molecule can be parameterised with all the given force fields.
 
     Args:
         mol (Molecule): The molecule to check.
+        ff_names (list[str]): The names of the force fields to check.
 
     Returns:
         bool: True if the molecule can be parameterised, False otherwise.
     """
-    try:
-        Interchange.from_smirnoff(SAGE, [mol])
-    except Exception as e:
-        logger.warning(f"Could not parameterise molecule {mol.to_smiles()}: {e}")
-        return False
+    for ff_name in ff_names:
+        ff = ForceField(ff_name)
+        try:
+            Interchange.from_smirnoff(ff, [mol])
+        except Exception as e:
+            logger.warning(
+                f"Could not parameterise molecule {mol.to_smiles()} with {ff_name}: {e}"
+            )
+            return False
 
     return True
 
@@ -284,7 +334,7 @@ def create_qca_torsion_dataset(
         idx = name.split("/")[-1]
         mol = mols[name]
 
-        if not can_parameterise_with_sage(mol):
+        if not can_parameterise(mol, FFS_TO_TEST):
             logger.warning(f"Skipping molecule {name} as it cannot be parameterised.")
             continue
 
@@ -337,9 +387,10 @@ def get_data_byte_dance(
     )
 
     spacing_multiple = SPACING_MULTIPLES[dataset_name]
+    check_absolute = CHECK_ABSOLUTE[dataset_name]
     indices_and_angles = {
         name: get_dihedral_indices_and_angles(
-            mol, name, spacing_multiple=spacing_multiple
+            mol, name, spacing_multiple=spacing_multiple, check_absolute=check_absolute
         )
         for name, mol in tqdm(mols.items())
     }
