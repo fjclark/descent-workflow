@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<SMIRNOFF version="0.3" aromaticity_model="OEAroModel_MDL">
+    <Author>The Open Force Field Initiative</Author>
+    <Date>2024-09-11</Date>
+    <Angles version="0.3" potential="harmonic">
+        <Angle smirks="[*:1]~[#6X2:2]~[*:3]" angle="180.0 * degree ** 1" k="99.58650888903 * kilocalorie_per_mole ** 1 * radian ** -2" id="a16"></Angle>
+        <Angle smirks="[*:1]~[#7X2:2]~[*:3]" angle="180.0 * degree ** 1" k="89.96041175564783 * kilocalorie_per_mole ** 1 * radian ** -2" id="a17"></Angle>
+        <Angle smirks="[*:1]~[#7X2:2]~[#7X1:3]" angle="180.0 * degree ** 1" k="117.5666837972 * kilocalorie_per_mole ** 1 * radian ** -2" id="a27"></Angle>
+        <Angle smirks="[*:1]=[#16X2:2]=[*:3]" angle="180.0 * degree ** 1" k="140.0 * mole ** -1 * radian ** -2 * kilocalorie ** 1" id="a35"></Angle>
+    </Angles>
+</SMIRNOFF>
