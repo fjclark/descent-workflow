@@ -20,6 +20,7 @@ from convert_ff import pt_file_to_offxml_with_description
 from loguru import logger
 from models import WorkflowConfig
 from tbparse import SummaryReader
+from openff.interchange.models import PotentialKey
 
 
 def write_metrics(
@@ -98,9 +99,15 @@ def get_param_and_attr_configs(
     # except KeyError:
     #     pass
 
-    parameters = {
-        k: descent.train.ParameterConfig(**v) for k, v in config.parameters.items()
-    }
+    parameters = {}
+    for k, v in config.parameters.items():
+        if "include" in v:
+            v["include"] = [PotentialKey(id=key_id) for key_id in v["include"]]
+        if "exclude" in v:
+            v["exclude"] = [PotentialKey(id=key_id) for key_id in v["exclude"]]
+
+        parameters[k] = descent.train.ParameterConfig(**v)
+
     attributes = {
         k: descent.train.AttributeConfig(**v) for k, v in config.attributes.items()
     }
