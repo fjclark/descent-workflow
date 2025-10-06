@@ -1,0 +1,1 @@
+Fit to SPICE 2 (filtered out larger forces) with linearised harmonics, with minibatching (size 256), and bond, angle, and torsion types systemically generated based on the training data, including ring membership information for the angle types. Also including proper torsion bend coupling terms.

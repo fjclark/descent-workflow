@@ -101,6 +101,44 @@ def pt_ff_to_off_ff(
                 logger.info(smirks)
                 ff_parameter.k = k_s
 
+        elif potential_type in ["ProperTorsionBends"]:
+            handler = base_force_field.get_parameter_handler(potential_type)
+            # we need to collect the k values into a list accross the entries
+            collection_data = {}
+            for i in range(len(potential.parameters)):
+                smirks = potential.parameter_keys[i].id
+                if smirks not in collection_data:
+                    collection_data[smirks] = {}
+                opt_parameters = potential.parameters[i].detach().cpu()
+                # find k and the perodicity
+                k_index = parameter_names.index("k")
+                k = opt_parameters[k_index] * parameter_units[k_index]
+                p = int(opt_parameters[parameter_names.index("periodicity")])
+                collection_data[smirks][p] = {}
+                collection_data[smirks][p]["k"] = k
+                # Extract the angle0 value from the shared parameters
+                all_angle0 = (
+                    potential.shared_parameter_mapping @ potential.shared_parameters
+                )
+                angle0_index = potential.shared_parameter_cols.index("angle0")
+                angle0 = (
+                    all_angle0[i][angle0_index]
+                    * potential.shared_parameter_units[angle0_index]
+                )
+                collection_data[smirks][p]["angle0"] = angle0.to(off_unit.degree)
+
+            # now update the force field
+            for smirks, tor_data in collection_data.items():
+                ff_parameter = handler[smirks]
+                k_s = [tor_data[p]["k"] for p in ff_parameter.periodicity]
+                angle0 = [tor_data[p]["angle0"] for p in ff_parameter.periodicity]
+                assert len(set(angle0)) == 1, "All angle0 values must be the same"
+                logger.info(ff_parameter.periodicity)
+                logger.info(k_s)
+                logger.info(smirks)
+                ff_parameter.k = k_s
+                ff_parameter.angle0 = angle0[0]
+
         elif potential_type in ["ImproperTorsions"]:
             handler = base_force_field.get_parameter_handler(potential_type)
             # we only fit the v2 terms for impropers so convert to list and set

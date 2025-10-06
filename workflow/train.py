@@ -91,27 +91,53 @@ def get_datasets(config: WorkflowConfig) -> tuple[datasets.Dataset, datasets.Dat
 
 def get_param_and_attr_configs(
     config: WorkflowConfig,
-) -> tuple[descent.train.ParameterConfig, descent.train.AttributeConfig]:
+) -> tuple[
+    descent.train.ParameterConfig,
+    descent.train.SharedParameterConfig,
+    descent.train.AttributeConfig,
+]:
     """Prepare parameter and attribute configurations."""
     # try:
     #     if config.parameters["Angles"]["limits"]["angle"][-1].lower() == "pi":
     #         config.parameters["Angles"]["limits"]["angle"][-1] = math.pi
     # except KeyError:
     #     pass
-
     parameters = {}
     for k, v in config.parameters.items():
+        associated_handler = k if "Linear" not in k else k.replace("Linear", "")
         if "include" in v:
-            v["include"] = [PotentialKey(id=key_id) for key_id in v["include"]]
+            v["include"] = [
+                PotentialKey(associated_handler=associated_handler, id=key_id)
+                for key_id in v["include"]
+            ]
         if "exclude" in v:
-            v["exclude"] = [PotentialKey(id=key_id) for key_id in v["exclude"]]
+            v["exclude"] = [
+                PotentialKey(associated_handler=associated_handler, id=key_id)
+                for key_id in v["exclude"]
+            ]
 
         parameters[k] = descent.train.ParameterConfig(**v)
+
+    shared_parameters = {}
+    for k, v in config.shared_parameters.items():
+        associated_handler = k if "Linear" not in k else k.replace("Linear", "")
+        if "include" in v:
+            v["include"] = [
+                PotentialKey(associated_handler=associated_handler, id=key_id)
+                for key_id in v["include"]
+            ]
+        if "exclude" in v:
+            v["exclude"] = [
+                PotentialKey(associated_handler=associated_handler, id=key_id)
+                for key_id in v["exclude"]
+            ]
+
+        shared_parameters[k] = descent.train.SharedParameterConfig(**v)
 
     attributes = {
         k: descent.train.AttributeConfig(**v) for k, v in config.attributes.items()
     }
-    return parameters, attributes
+    return parameters, shared_parameters, attributes
 
 
 def setup_experiment_dir(config: WorkflowConfig) -> Path:
@@ -314,7 +340,7 @@ def train(config: WorkflowConfig) -> None:
 
     force_field, topologies = torch.load(config.torch_ffs_and_tops_path)
     dataset_train, dataset_test = get_datasets(config)
-    parameters, attributes = get_param_and_attr_configs(config)
+    parameters, shared_parameters, attributes = get_param_and_attr_configs(config)
     force_field = force_field.to("cuda")
     topologies = {
         smiles: topology.to("cuda") for smiles, topology in topologies.items()
@@ -322,10 +348,14 @@ def train(config: WorkflowConfig) -> None:
 
     logger.info(f"Training with {len(dataset_train)} entries")
     logger.info("Parameters: " + pprint.pformat(parameters))
+    logger.info("Shared Parameters: " + pprint.pformat(shared_parameters))
     logger.info("Attributes: " + pprint.pformat(attributes))
 
     trainable = descent.train.Trainable(
-        force_field=force_field, parameters=parameters, attributes=attributes
+        force_field=force_field,
+        parameters=parameters,
+        shared_parameters=shared_parameters,
+        attributes=attributes,
     )
 
     experiment_dir = setup_experiment_dir(config)
