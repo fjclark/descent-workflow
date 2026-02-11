@@ -1,0 +1,1 @@
+Fit to SPICE 2 with Jen's specific bond and angle force field (https://github.com/openforcefield/back-to-school-jen/blob/main/4_make_offxmls/b_no_bond_with_ring_in_atom/openff-2.2.1-ring-no-bond.offxml).
