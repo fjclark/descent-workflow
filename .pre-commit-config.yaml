@@ -7,24 +7,27 @@ repos:
 
   - repo: local
     hooks:
-    -   id: ruff
+    -   id: ruff-format
         name: Autoformat python code
         language: system
-        entry: bash
-        args: [-c, "make format"]
+        entry: pixi
+        args: [run, format]
+        pass_filenames: false
 
   - repo: local
     hooks:
-    -   id: ruff
+    -   id: ruff-lint
         name: Lint python code
         language: system
-        entry: bash
-        args: [-c, "make lint"]
+        entry: pixi
+        args: [run, lint]
+        pass_filenames: false
 
-  # - repo: local
-  #   hooks:
-  #   -   id: mypy
-  #       name: Type check python code
-  #       language: system
-  #       entry: bash
-  #       args: [-c, "make type-check"]
+  - repo: local
+    hooks:
+    -   id: mypy
+        name: Type check python code
+        language: system
+        entry: pixi
+        args: [run, type-check]
+        pass_filenames: false

@@ -237,6 +237,7 @@ def filter_spice2_dataset_by_forces(data_dir: pathlib.Path) -> None:
 
     input_dir = data_dir / "data-raw"
     output_dir = data_dir / "data-filtered-by-forces"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     dataset = datasets.load_from_disk(input_dir)
     data_df = dataset.to_pandas()
@@ -350,9 +351,9 @@ def split_train_test_spice2(data_dir: pathlib.Path | str) -> None:
 def get_data_spice2_force_filtered(data_dir: pathlib.Path | str) -> None:
     data_dir = pathlib.Path(data_dir)
     logger.info("Getting data for SPICE...")
-    # download_spice2_data(data_dir)
-    # process_dataset_spice2(data_dir)
-    # filter_spice2_dataset_by_forces(data_dir)
+    download_spice2_data(data_dir)
+    process_dataset_spice2(data_dir)
+    filter_spice2_dataset_by_forces(data_dir)
     split_train_test_spice2(data_dir)
     logger.info("Done getting data for SPICE.")
 
