@@ -1,0 +1,87 @@
+[project]
+name = "descent-workflow"
+version = "0.1.0"
+description = "Workflow for descent force field optimization"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.pixi.workspace]
+channels = ["conda-forge", "openeye", "bioconda"]
+platforms = ["linux-64"]
+
+[tool.pixi.system-requirements]
+cuda = "12"
+
+[tool.pixi.dependencies]
+python = ">=3.10"
+cuda-version = ">=12"
+pip = "*"
+datasets = "*"
+# smee = ">=0.8.0"
+# descent = ">=0.4.0"
+click = "*"
+more-itertools = "*"
+# Workflow
+snakemake = "*"
+loguru = "*"
+seaborn = "*"
+# Parameterization
+openff-toolkit = "*"
+openff-interchange = "*"
+rdkit = "*"
+openeye-toolkits = ">=2025.2.1,<2026"
+# Training
+pytorch-gpu = "*"
+pytorch-lightning = "*"
+tensorboard = "*"
+tensorboardX = "*"
+tbparse = "*"
+# Benchmarking
+Mdanalysis = "*"
+openff-qcsubmit = "*"
+click-option-group = "*"
+dask = "*"
+dask-jobqueue = "*"
+geometric = "*"
+# Interface with Espaloma
+dgl = "*"
+# Dev
+pre-commit = "*"
+ruff = "*"
+mypy = "*"
+# New versions of torchdata require new versions of PyTorch which are not supported by DGL
+torchdata = "<=0.10.0"
+
+[tool.pixi.pypi-dependencies]
+descent-workflow = { path = ".", editable = true }
+smee = { git = "https://github.com/thomasjamespope/smee.git" }
+descent = { git = "https://github.com/fjclark/descent.git", branch = "feature-regularization" }
+yammbs = { git = "https://github.com/openforcefield/yammbs.git" }
+deepchem = "*"
+
+
+[tool.pixi.tasks]
+# Environment setup
+setup = "pre-commit install"
+
+# Linting and formatting
+lint = "ruff check --fix ."
+format = "ruff format ."
+type-check = "mypy --follow-imports=silent --ignore-missing-imports --strict workflow"
+
+# Combined quality checks
+check = { depends-on = ["format", "lint", "type-check"] }
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "D"]
+ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D107"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
