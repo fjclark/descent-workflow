@@ -19,8 +19,8 @@ import torch
 from convert_ff import pt_file_to_offxml_with_description
 from loguru import logger
 from models import WorkflowConfig
-from tbparse import SummaryReader
 from openff.interchange.models import PotentialKey
+from tbparse import SummaryReader
 
 
 def write_metrics(
@@ -271,7 +271,6 @@ def compute_torsion_prior(
 
 def plot_loss(configs: list[WorkflowConfig], output_path: Path) -> None:
     """Plot the training and test total, force, and energy loss."""
-
     dfs = {
         config.experiment_name: SummaryReader(config.fit_dir).scalars
         for config in configs
@@ -311,7 +310,6 @@ def plot_loss(configs: list[WorkflowConfig], output_path: Path) -> None:
 
 def train(config: WorkflowConfig) -> None:
     """Use batching to fit to the SPICE dataset on a single GPU!"""
-
     force_field, topologies = torch.load(config.torch_ffs_and_tops_path)
     dataset_train, dataset_test = get_datasets(config)
     parameters, attributes = get_param_and_attr_configs(config)

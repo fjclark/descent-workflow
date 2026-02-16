@@ -1,23 +1,23 @@
-"""
-Functionality for getting the ByteDance torsion data, particularly guessing the angles and
+"""Functionality for getting the ByteDance torsion data, particularly guessing the angles and
 dihedral indices, which are not provided in the dataset.
 """
 
-from pathlib import Path
-from urllib.request import urlretrieve
 import json
-import numpy as np
-from openff.toolkit import ForceField, Molecule
-from openff.units import unit
+from pathlib import Path
+from typing import Literal
+from urllib.request import urlretrieve
+
 import h5py
 import MDAnalysis as mda
-from MDAnalysis.analysis.dihedrals import Dihedral
-from tqdm import tqdm
+import numpy as np
 from loguru import logger
-from yammbs.torsion.inputs import QCArchiveTorsionProfile, QCArchiveTorsionDataset
-from openff.interchange import Interchange
+from MDAnalysis.analysis.dihedrals import Dihedral
 from numpy import typing as npt
-from typing import Literal
+from openff.interchange import Interchange
+from openff.toolkit import ForceField, Molecule
+from openff.units import unit
+from tqdm import tqdm
+from yammbs.torsion.inputs import QCArchiveTorsionDataset, QCArchiveTorsionProfile
 
 SAGE = ForceField("openff-2.2.0.offxml")
 FFS_TO_TEST = [
@@ -63,8 +63,7 @@ The data in the H5 files are grouped by molecule names. Within each group, there
 def download_raw_data(
     data_dir: Path, dataset_name: Literal["BDTorsionInRing", "BDTorsionNonRing"]
 ) -> dict[str, Path]:
-    """
-    Download the raw data from the ByteDance torsion dataset.
+    """Download the raw data from the ByteDance torsion dataset.
 
     Args:
         data_dir (Path): The directory to download the data to.
@@ -72,6 +71,7 @@ def download_raw_data(
 
     Returns:
         dict[str, Path]: A dictionary mapping file names to their local paths.
+
     """
     data_dir.mkdir(parents=True, exist_ok=True)
     local_paths = {}
@@ -102,6 +102,7 @@ def get_mols_with_conformers_and_energies(
     Returns:
         dict[str, Molecule]: Dictionary mapping molecule names to Molecule objects with conformers.
         dict[str, np.ndarray]: Dictionary mapping molecule names to their energies.
+
     """
     with open(jsonfile, "r") as f:
         smiles_data = json.load(f)
@@ -140,6 +141,7 @@ def get_dihedral_angles(mol: Molecule, atom_indices: list[list[int]]) -> list[fl
 
     Returns:
         list[list[float]]: List of lists of dihedral angles for each set of atoms for each conformer.
+
     """
     confs = mol.conformers
 
@@ -166,6 +168,7 @@ def get_angle_periodic_diff(angle1: float, angle2: float) -> float:
 
     Returns:
         float: Smallest difference between the two angles in degrees.
+
     """
     diff = angle2 - angle1
     diff = (diff + 180) % 360 - 180  # Wrap to [-180, 180]
@@ -210,6 +213,7 @@ def is_torsion_scan(
 
     Returns:
         bool: True if the angles represent a torsion scan, False otherwise.
+
     """
     angles = sorted(angles)
 
@@ -255,6 +259,7 @@ def get_dihedral_indices_and_angles(
 
     Returns:
         tuple[tuple[int, int, int, int], list[float]]: The dihedral atom indices and angles.
+
     """
     indices_list = []
     # Get the set of all possible dihedral atoms
@@ -297,6 +302,7 @@ def can_parameterise(mol: Molecule, ff_names: list[str]) -> bool:
 
     Returns:
         bool: True if the molecule can be parameterised, False otherwise.
+
     """
     for ff_name in ff_names:
         ff = ForceField(ff_name)
@@ -316,8 +322,7 @@ def create_qca_torsion_dataset(
     mols: dict[str, Molecule],
     all_energies: dict[str, np.ndarray],
 ):
-    """
-    Create a QCArchiveTorsionDataset from torsion scan data and save to a JSON file.
+    """Create a QCArchiveTorsionDataset from torsion scan data and save to a JSON file.
 
     Args:
         indices_and_angles (dict): Dictionary mapping molecule names to tuples of
@@ -327,6 +332,7 @@ def create_qca_torsion_dataset(
 
     Returns:
         QCArchiveTorsionDataset: The constructed torsion dataset.
+
     """
     qm_torsions = []
 
@@ -378,6 +384,7 @@ def get_data_byte_dance(
 
     Returns:
         QCArchiveTorsionDataset: The processed torsion dataset.
+
     """
     output_dir = Path(output_dir)
     logger.info(f"Getting ByteDance torsion data for dataset {dataset_name}")

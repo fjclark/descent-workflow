@@ -11,8 +11,7 @@ from smirnoff_plugins.handlers.valence import UreyBradleyHandler
 
 
 def angle_smirks_to_urey_bradley_smirks(smirks: str) -> str:
-    """
-    Convert an angle SMIRKS to a Urey-Bradley SMIRKS by removing the ':2' label and converting the
+    """Convert an angle SMIRKS to a Urey-Bradley SMIRKS by removing the ':2' label and converting the
     ':3' label to a '2' label.
     """
     # Remove the ':2' label
@@ -25,8 +24,7 @@ def angle_smirks_to_urey_bradley_smirks(smirks: str) -> str:
 def get_urey_bradley_bond_parameter(
     angle: AngleType, k: float = 0.01, length: float = 2.0
 ) -> UreyBradleyHandler.UreyBradleyType:
-    """
-    Get the Urey-Bradley bond parameter for a given angle parameter.
+    """Get the Urey-Bradley bond parameter for a given angle parameter.
 
     Parameters
     ----------
@@ -44,6 +42,7 @@ def get_urey_bradley_bond_parameter(
     UreyBradleyHandler.UreyBradleyType
         A Urey-Bradley bond parameter with the same SMIRKS as the angle parameter,
         a force constant of `k` kcal/mol/Angstrom^2, and a length of 2.0 Angstroms.
+
     """
     return UreyBradleyHandler.UreyBradleyType(
         smirks=angle_smirks_to_urey_bradley_smirks(angle.smirks),
@@ -54,8 +53,7 @@ def get_urey_bradley_bond_parameter(
 
 
 def add_urey_bradley_terms(forcefield: ForceField) -> ForceField:
-    """
-    Add Urey-Bradley terms to the force field, initialising the force constants
+    """Add Urey-Bradley terms to the force field, initialising the force constants
     to 0 and distances to 2 Angstroms.
     """
     new_ff = deepcopy(forcefield)
@@ -69,8 +67,7 @@ def add_urey_bradley_terms(forcefield: ForceField) -> ForceField:
 
 
 def main(input_ff_path: Path, output_ff_path: Path):
-    """
-    Add Urey-Bradley terms to a supplied OpenFF force field.
+    """Add Urey-Bradley terms to a supplied OpenFF force field.
     """
     forcefield = ForceField(str(input_ff_path), load_plugins=True)
     new_forcefield = add_urey_bradley_terms(forcefield)

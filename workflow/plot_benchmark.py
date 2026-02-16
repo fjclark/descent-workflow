@@ -5,13 +5,12 @@ import warnings
 from pathlib import Path
 
 import click
+import loguru
 import numpy
 import pandas
 import seaborn as sea
 from matplotlib import pyplot
 from pandas import DataFrame as DF
-
-import loguru
 
 pyplot.style.use("ggplot")
 
@@ -37,7 +36,8 @@ def load_ids_to_remove(paths: list[Path] = []) -> list[int]:
 
 def load_bench(d: Path, ids_to_remove: list[int] | None = None) -> pandas.DataFrame:
     """Load the DDE, RMSD, TFD, and ICRMSD results from the CSV files in ``d``
-    and return the result as a merged dataframe"""
+    and return the result as a merged dataframe
+    """
     dde = pandas.read_csv(d / "dde.csv")
     dde.columns = ["rec_id", "dde"]
     rmsd = pandas.read_csv(d / "rmsd.csv")

@@ -1,16 +1,16 @@
 """Benchmark fit force fields. Many functions stolen from https://github.com/openforcefield/sage-2.2.1/tree/main"""
 
-from pathlib import Path
+import logging
+import multiprocessing
 import subprocess
 import sys
+from pathlib import Path
+
+import loguru
+from models import WorkflowConfig
 
 # from yammbs.cached_result import CachedResultCollection,CachedResult
 from openff.qcsubmit.results import OptimizationResultCollection
-import logging
-import multiprocessing
-from models import WorkflowConfig
-
-import loguru
 
 logger = loguru.logger
 
@@ -73,7 +73,6 @@ def split_dataset_batch_for_cache(dataset, n=1):
 
 def get_sage_benchmarking_data(output_dir: str | Path) -> None:
     """Get the benchmarking data used for Sage 2.2.1"""
-
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -112,7 +111,6 @@ def get_sage_benchmarking_data(output_dir: str | Path) -> None:
 
 def run_yammbs_benchmarking(config: WorkflowConfig) -> None:
     """Run the yammbs benchmarking script with the given configuration."""
-
     # Get the absolute path to required scripts/ files
     yammbs_benchmark_script_path = (
         Path(__file__).parent / "run_yammbs_script.py"
@@ -188,7 +186,6 @@ def run_torsion_benchmark(
     output_dir: str | Path,
 ) -> None:
     """Benchmark the force field on torsion data. Note that all ffs in the output ff dir will be benchmarked."""
-
     # Set up directories
     output_dir = Path(output_dir).absolute()
     output_dir.mkdir(parents=True, exist_ok=True)

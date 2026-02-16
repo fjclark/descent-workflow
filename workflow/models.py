@@ -7,8 +7,7 @@ from pydantic import BaseModel, Field, validator
 
 
 class WorkflowConfig(BaseModel):
-    """
-    Configuration for the workflow.
+    """Configuration for the workflow.
     """
 
     experiment_name: str = Field(default="", description="Name of the experiment.")
@@ -146,16 +145,14 @@ class WorkflowConfig(BaseModel):
 
     @classmethod
     def from_file(cls, filename: str | Path) -> "WorkflowConfig":
-        """
-        Load the configuration from a YAML file.
+        """Load the configuration from a YAML file.
         """
         with open(filename, "r") as f:
             data = yaml.safe_load(f)
             return cls(**data)
 
     def to_file(self, filename: str | Path):
-        """
-        Save the configuration to a YAML file with nice formatting.
+        """Save the configuration to a YAML file with nice formatting.
         """
         with open(filename, "w") as f:
             yaml.dump(self.dict(), f, default_flow_style=False, sort_keys=False)

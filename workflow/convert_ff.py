@@ -18,7 +18,6 @@ def pt_ff_to_off_ff(
     base_force_field: ForceField, tensor_force_field: TensorForceField
 ) -> ForceField:
     """Convert the FF from pt to OFF ForceField format."""
-
     # Copy the base force field to avoid modifying it
     base_force_field = deepcopy(base_force_field)
 
@@ -135,7 +134,6 @@ def pt_file_to_offxml(
     tensor_force_field_path: str | Path,
 ) -> None:
     """Convert the FF from pt to offxml format."""
-
     logger.info(
         f"Converting {tensor_force_field_path} to OFF format with base {base_force_field}"
     )
@@ -153,7 +151,6 @@ def pt_file_to_offxml(
 
 def pt_file_to_offxml_with_description(config: WorkflowConfig) -> None:
     """Convert the FF from pt to offxml format with a description."""
-
     if not config.output_ff_dir.exists():
         config.output_ff_dir.mkdir(parents=True, exist_ok=True)
     pt_file_to_offxml(

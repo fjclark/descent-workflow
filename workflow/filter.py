@@ -1,5 +1,4 @@
-"""
-Filter out any molecules which can't be parameterised.
+"""Filter out any molecules which can't be parameterised.
 
 Optionally, also cluster conformers by their RMSD. Some entries in `gen2-opt` have
 ~3000 very similar conformers.
@@ -112,7 +111,6 @@ def filter_and_cluster_espaloma(config: WorkflowConfig) -> None:
 
 def filter_spice2(config: WorkflowConfig) -> None:
     """Filter out any molecules which can't be parameterised."""
-
     sources = [config.data_dir / "data-train", config.data_dir / "data-test"]
     logger.info(f"Filtering {sources}")
 
@@ -141,7 +139,8 @@ def is_charged(smiles: str) -> bool:
 
 def has_any_formal_charge(smiles: str) -> bool:
     """Check if a molecule has any atoms with a formal charge. Note that
-    a molecule with a net charge of 0 can still have atoms with formal charges."""
+    a molecule with a net charge of 0 can still have atoms with formal charges.
+    """
     mol = Molecule.from_mapped_smiles(smiles, allow_undefined_stereo=True)
     rdmol = mol.to_rdkit()
     return any(atom.GetFormalCharge() != 0 for atom in rdmol.GetAtoms())
@@ -149,7 +148,6 @@ def has_any_formal_charge(smiles: str) -> bool:
 
 def filter_neutral_spice2(config: WorkflowConfig) -> None:
     """Filter out any molecules which can't be parameterised, or are charged."""
-
     sources = [config.data_dir / "data-train", config.data_dir / "data-test"]
     logger.info(f"Filtering {sources}")
 
@@ -171,7 +169,6 @@ def filter_neutral_spice2(config: WorkflowConfig) -> None:
 
 def filter_no_formal_charges_spice2(config: WorkflowConfig) -> None:
     """Filter out any molecules which can't be parameterised, or have any formal charges on any atoms."""
-
     sources = [config.data_dir / "data-train", config.data_dir / "data-test"]
     logger.info(f"Filtering {sources}")
 

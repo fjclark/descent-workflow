@@ -1,11 +1,10 @@
+import numpy as np
 import torch
 import typer
-import numpy as np
 
 
 def main(tops_and_ff_file: str) -> None:
-    """
-    Get the scales for the force field parameters in the given topology and force field file.
+    """Get the scales for the force field parameters in the given topology and force field file.
     """
     # Load the topology and force field
     loaded = torch.load(tops_and_ff_file)

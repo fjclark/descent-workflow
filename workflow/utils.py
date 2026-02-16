@@ -1,10 +1,9 @@
-from typing import Callable
 import importlib
+from typing import Callable
 
 
 def get_fn(fn_name: str) -> Callable:
-    """
-    Get a function from a module according to the config
+    """Get a function from a module according to the config
     """
     module_name, function_name = fn_name.rsplit(".", 1)
     # "module" is protected in a Snakefile

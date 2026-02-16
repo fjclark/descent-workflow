@@ -2,25 +2,23 @@
 
 import json
 import pathlib
+import subprocess
 import typing
 
+import datasets
+import deepchem as dc
 import descent.targets.energy
 import dgl
+import h5py
+import matplotlib.pyplot as plt
+import numpy as np
 import openff.toolkit
 import openff.units
 import openmm.unit
-import torch
-from tqdm import tqdm
-import h5py
-import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
-import datasets
-import deepchem as dc
-
-import subprocess
-
+import torch
 from loguru import logger
+from tqdm import tqdm
 
 HARTEE_TO_KCAL = (
     1.0 * openmm.unit.hartree * openmm.unit.AVOGADRO_CONSTANT_NA
@@ -178,7 +176,6 @@ def download_spice2_data(data_dir: pathlib.Path) -> None:
 
 def process_dataset_spice2(data_dir: pathlib.Path) -> None:
     """Process the SPICE dataset and save it to disk (without filtering forces)."""
-
     output_dir = data_dir / "data-raw"
 
     with h5py.File(data_dir / "SPICE-2.0.1.hdf5") as spice:
@@ -232,7 +229,6 @@ def process_dataset_spice2(data_dir: pathlib.Path) -> None:
 
 def filter_spice2_dataset_by_forces(data_dir: pathlib.Path) -> None:
     """Filter the SPICE dataset by forces and save it to disk."""
-
     logger.info("Filtering SPICE dataset by forces...")
 
     input_dir = data_dir / "data-raw"
@@ -269,7 +265,7 @@ def filter_spice2_dataset_by_forces(data_dir: pathlib.Path) -> None:
         # Write the percentile value
         ax.text(value, 0.4, f"{interval:.2f}", color="red", rotation=90, va="center")
 
-    ax.set_xlabel("RMS Forces (kcal mol$^{-1}$ $\mathrm{\AA}^{-1})$")
+    ax.set_xlabel(r"RMS Forces (kcal mol$^{-1}$ $\mathrm{\AA}^{-1})$")
     ax.set_ylabel("Count")
     ax.set_title("Distribution of RMS Forces")
     fig.savefig(str(output_dir / "rms_forces.png"), dpi=300, bbox_inches="tight")

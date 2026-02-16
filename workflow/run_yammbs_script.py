@@ -1,5 +1,4 @@
-"""
-This is almost identical to https://github.com/openforcefield/sage-2.2.1/blob/main/05_benchmark_forcefield/benchmark.py
+"""This is almost identical to https://github.com/openforcefield/sage-2.2.1/blob/main/05_benchmark_forcefield/benchmark.py
 This is included in a seperate script, rather than as a function in `benchmark.py` because the patterm:
 
 ```
