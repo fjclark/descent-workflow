@@ -5,6 +5,13 @@ description = "Workflow for descent force field optimization"
 requires-python = ">=3.10"
 dependencies = []
 
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["descent_workflow"]
+
 [tool.pixi.workspace]
 channels = ["conda-forge", "openeye", "bioconda"]
 platforms = ["linux-64"]
@@ -67,14 +74,14 @@ setup = "pre-commit install"
 # Linting and formatting
 lint = "ruff check --fix ."
 format = "ruff format ."
-type-check = "mypy --follow-imports=silent --ignore-missing-imports --strict workflow"
+type-check = "mypy --follow-imports=silent --ignore-missing-imports --strict descent_workflow"
 
 # Combined quality checks
 check = { depends-on = ["format", "lint", "type-check"] }
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["workflow/generate_new_types/create_angle_types_ring.ipynb"]
+extend-exclude = ["generate_new_types/create_angle_types_ring.ipynb"]
 
 [tool.ruff.lint]
 ignore = ["C901","E402","E501"]

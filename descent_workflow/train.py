@@ -48,13 +48,19 @@ def write_metrics(
     writer.add_scalar("loss_test", loss_test.detach().item(), epoch)
     writer.add_scalar("loss_test_energy", loss_test_energy.detach().item(), epoch)
     writer.add_scalar("loss_test_forces", loss_test_forces.detach().item(), epoch)
-    writer.add_scalar("prior_k_torsions_test", prior_k_torsions_test.detach().item(), epoch)
+    writer.add_scalar(
+        "prior_k_torsions_test", prior_k_torsions_test.detach().item(), epoch
+    )
 
     writer.add_scalar("rmse_energy", math.sqrt(loss_energy.detach().item()), epoch)
     writer.add_scalar("rmse_forces", math.sqrt(loss_forces.detach().item()), epoch)
 
-    writer.add_scalar("rmse_test_energy", math.sqrt(loss_test_energy.detach().item()), epoch)
-    writer.add_scalar("rmse_test_forces", math.sqrt(loss_test_forces.detach().item()), epoch)
+    writer.add_scalar(
+        "rmse_test_energy", math.sqrt(loss_test_energy.detach().item()), epoch
+    )
+    writer.add_scalar(
+        "rmse_test_forces", math.sqrt(loss_test_forces.detach().item()), epoch
+    )
 
     writer.flush()
 
@@ -62,10 +68,14 @@ def write_metrics(
 def get_datasets(config: WorkflowConfig) -> tuple[datasets.Dataset, datasets.Dataset]:
     """Get the training and test datasets."""
     test_dataset_names = [
-        k for k in config.filtered_data_dir.iterdir() if k.is_dir() and "test" in k.name.lower()
+        k
+        for k in config.filtered_data_dir.iterdir()
+        if k.is_dir() and "test" in k.name.lower()
     ]
     train_dataset_names = [
-        k for k in config.filtered_data_dir.iterdir() if k.is_dir() and k not in test_dataset_names
+        k
+        for k in config.filtered_data_dir.iterdir()
+        if k.is_dir() and k not in test_dataset_names
     ]
 
     train_dataset = datasets.concatenate_datasets(
@@ -98,13 +108,15 @@ def get_param_and_attr_configs(
 
         parameters[k] = descent.train.ParameterConfig(**v)
 
-    attributes = {k: descent.train.AttributeConfig(**v) for k, v in config.attributes.items()}
+    attributes = {
+        k: descent.train.AttributeConfig(**v) for k, v in config.attributes.items()
+    }
     return parameters, attributes
 
 
 def setup_experiment_dir(config: WorkflowConfig) -> Path:
     """Set up the experiment directory."""
-    experiment_dir = config.fit_dir
+    experiment_dir: Path = config.fit_dir
     if experiment_dir.exists():
         raise FileExistsError(
             f"Experiment directory {experiment_dir} already exists. Please remove it or choose a different experiment name."
@@ -130,8 +142,14 @@ def write_hparams(writer: tensorboardX.SummaryWriter, config: WorkflowConfig) ->
 
 def get_initial_torsions(force_field: smee.TensorForceField) -> torch.Tensor:
     """Get initial torsion values for regularization."""
-    k_col_torsion = force_field.potentials_by_type["ProperTorsions"].parameter_cols.index("k")
-    return force_field.potentials_by_type["ProperTorsions"].parameters[:, k_col_torsion].detach()
+    k_col_torsion = force_field.potentials_by_type[
+        "ProperTorsions"
+    ].parameter_cols.index("k")
+    return (
+        force_field.potentials_by_type["ProperTorsions"]
+        .parameters[:, k_col_torsion]
+        .detach()
+    )
 
 
 def get_losses(
@@ -165,7 +183,8 @@ def get_losses(
         batch_loss_force = ((f_pred - f_ref) ** 2).sum() / true_batch_size
 
         batch_loss = (
-            config.energy_weight * batch_loss_energy + config.force_weight * batch_loss_force
+            config.energy_weight * batch_loss_energy
+            + config.force_weight * batch_loss_force
         )
 
         (batch_grad,) = torch.autograd.grad(batch_loss, x, create_graph=True)
@@ -227,11 +246,14 @@ def compute_torsion_prior(
         # ).square().sum() * config.torsion_weight
         # (torsion_grad,) = torch.autograd.grad(torsion_prior, x, create_graph=False)
         # grad += torsion_grad.detach()
-        k_col_torsion = ff.potentials_by_type["ImproperTorsions"].parameter_cols.index("k")
+        k_col_torsion = ff.potentials_by_type["ImproperTorsions"].parameter_cols.index(
+            "k"
+        )
         # Regularise above 10 kcal mol-1
         torsion_prior = (
             torch.clamp(
-                ff.potentials_by_type["ImproperTorsions"].parameters[:, k_col_torsion] - 10.0,
+                ff.potentials_by_type["ImproperTorsions"].parameters[:, k_col_torsion]
+                - 10.0,
                 min=0.0,
             )
             .square()
@@ -242,12 +264,16 @@ def compute_torsion_prior(
         grad += torsion_grad.detach()
     else:
         torsion_prior = torch.tensor([0.0], requires_grad=True)
-    return torsion_prior
+    result: torch.Tensor = torsion_prior
+    return result
 
 
 def plot_loss(configs: list[WorkflowConfig], output_path: Path) -> None:
     """Plot the training and test total, force, and energy loss."""
-    dfs = {config.experiment_name: SummaryReader(config.fit_dir).scalars for config in configs}
+    dfs = {
+        config.experiment_name: SummaryReader(config.fit_dir).scalars
+        for config in configs
+    }
 
     # Three plots on one level
     with plt.style.context("ggplot"):
@@ -287,7 +313,9 @@ def train(config: WorkflowConfig) -> None:
     dataset_train, dataset_test = get_datasets(config)
     parameters, attributes = get_param_and_attr_configs(config)
     force_field = force_field.to("cuda")
-    topologies = {smiles: topology.to("cuda") for smiles, topology in topologies.items()}
+    topologies = {
+        smiles: topology.to("cuda") for smiles, topology in topologies.items()
+    }
 
     logger.info(f"Training with {len(dataset_train)} entries")
     logger.info("Parameters: " + pprint.pformat(parameters))
@@ -357,4 +385,6 @@ def train(config: WorkflowConfig) -> None:
     # Save in pt and offxml format, saving in the output ff directory
     torch.save(trainable.to_force_field(x), config.final_torch_ff_path)
     pt_file_to_offxml_with_description(config)
-    logger.info(f"Saved force field to {config.final_torch_ff_path} and {config.output_ff_path}")
+    logger.info(
+        f"Saved force field to {config.final_torch_ff_path} and {config.output_ff_path}"
+    )

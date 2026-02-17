@@ -14,7 +14,6 @@ curl -fsSL https://pixi.sh/install.sh | bash
 Run the workflow with e.g.:
 
 ```bash
-cd workflow
 pixi run snakemake --cores all train --config workflow_config_path=configs/initial_fit_espaloma_linearised_harmonics.yaml
 ```
 

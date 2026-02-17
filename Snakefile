@@ -5,19 +5,23 @@ Doesn't play nicely with pathlib.Path (converts to string)
 
 """
 import importlib
-from typing import Callable
-from pathlib import Path
-
-from models import WorkflowConfig
-from parameterise import create_torch_ff_and_top
-from train import train
-from benchmark import get_sage_benchmarking_data, run_yammbs_benchmarking, run_torsion_benchmark
-from utils import get_fn
-from get_data import get_qca_torsion_data
-from get_data_byte_dance import get_data_byte_dance
 import os
+from pathlib import Path
+from typing import Callable
 
 from loguru import logger
+
+from descent_workflow.benchmark import (
+    get_sage_benchmarking_data,
+    run_torsion_benchmark,
+    run_yammbs_benchmarking,
+)
+from descent_workflow.get_data import get_qca_torsion_data
+from descent_workflow.get_data_byte_dance import get_data_byte_dance
+from descent_workflow.models import WorkflowConfig
+from descent_workflow.parameterise import create_torch_ff_and_top
+from descent_workflow.train import train
+from descent_workflow.utils import get_fn
 
 # Load the configuration from a yaml file
 try:
