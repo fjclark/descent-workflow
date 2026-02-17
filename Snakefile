@@ -3,7 +3,6 @@ Snakefile to control the overall fitting workflow. Run with e.g.
 `snakemake --cores all train --configfile configs/initial_fit_espaloma_linearised_harmonics.yaml`
 """
 import importlib
-import os
 from pathlib import Path
 from typing import Callable
 
@@ -41,7 +40,7 @@ rule get_data:
     run:
         get_data_fn = get_fn(workflow_config.get_data_fn)
         get_data_fn(workflow_config.data_dir)
-        workflow_config.to_file(os.path.join(workflow_config.data_dir, "workflow_config.yaml"))
+        workflow_config.to_file(workflow_config.data_dir / "workflow_config.yaml")
 
 rule parameterise:
     input:
@@ -50,7 +49,7 @@ rule parameterise:
         workflow_config.torch_ffs_and_tops_path
     run:
         create_torch_ff_and_top(workflow_config)
-        workflow_config.to_file(os.path.join(workflow_config.data_dir, "workflow_config.yaml"))
+        workflow_config.to_file(workflow_config.data_dir / "workflow_config.yaml")
 
 
 rule filter_and_cluster:
@@ -61,7 +60,7 @@ rule filter_and_cluster:
     run:
         filter_and_cluster_fn = get_fn(workflow_config.filter_and_cluster_fn)
         filter_and_cluster_fn(workflow_config)
-        workflow_config.to_file(os.path.join(workflow_config.filtered_data_dir, "workflow_config.yaml"))
+        workflow_config.to_file(workflow_config.filtered_data_dir / "workflow_config.yaml")
 
 rule train:
     input:
@@ -70,7 +69,7 @@ rule train:
         protected(directory(workflow_config.fit_dir))
     run:
         train(workflow_config)
-        workflow_config.to_file(os.path.join(workflow_config.fit_dir, "workflow_config.yaml"))
+        workflow_config.to_file(workflow_config.fit_dir / "workflow_config.yaml")
 
 rule get_benchmarking_data:
     output:
