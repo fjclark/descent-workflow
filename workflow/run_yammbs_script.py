@@ -44,7 +44,14 @@ logger = loguru.logger
 @click.option("--out-dir", "-o", default=".")
 @click.option("--procs", "-p", default=16)
 @click.option("--invalidate-cache", "-i", is_flag=True, default=False)
-def main(forcefield, dataset, sqlite_file, out_dir, procs, invalidate_cache):
+def main(
+    forcefield: str,
+    dataset: str,
+    sqlite_file: str,
+    out_dir: str,
+    procs: int,
+    invalidate_cache: bool,
+) -> None:
     if invalidate_cache and os.path.exists(sqlite_file):
         os.remove(sqlite_file)
     if os.path.exists(sqlite_file):
@@ -72,9 +79,7 @@ def main(forcefield, dataset, sqlite_file, out_dir, procs, invalidate_cache):
     store.get_dde(forcefield, skip_check=True).to_csv(f"{out_dir}/dde.csv")
     store.get_rmsd(forcefield, skip_check=True).to_csv(f"{out_dir}/rmsd.csv")
     store.get_tfd(forcefield, skip_check=True).to_csv(f"{out_dir}/tfd.csv")
-    store.get_internal_coordinate_rmsd(forcefield, skip_check=True).to_csv(
-        f"{out_dir}/icrmsd.csv"
-    )
+    store.get_internal_coordinate_rmsd(forcefield, skip_check=True).to_csv(f"{out_dir}/icrmsd.csv")
 
 
 if __name__ == "__main__":

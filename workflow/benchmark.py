@@ -5,6 +5,7 @@ import multiprocessing
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import loguru
 from models import WorkflowConfig
@@ -21,7 +22,7 @@ SAGE22_INDUSTRY_BENCHMARK_JSON_URL = "https://raw.githubusercontent.com/openforc
 
 
 # From https://github.com/openforcefield/sage-2.2.1/blob/main/05_benchmark_forcefield/cache_dataset.py
-def split_dataset_batch_for_cache(dataset, n=1):
+def split_dataset_batch_for_cache(dataset: Any, n: int = 1) -> list[OptimizationResultCollection]:
     ds = dict(dataset)["entries"]["https://api.qcarchive.molssi.org:443/"]
     n_keys = len(ds)
     group_size = int(n_keys / n) + 1
@@ -112,17 +113,16 @@ def get_sage_benchmarking_data(output_dir: str | Path) -> None:
 def run_yammbs_benchmarking(config: WorkflowConfig) -> None:
     """Run the yammbs benchmarking script with the given configuration."""
     # Get the absolute path to required scripts/ files
-    yammbs_benchmark_script_path = (
-        Path(__file__).parent / "run_yammbs_script.py"
-    ).absolute()
+    yammbs_benchmark_script_path = (Path(__file__).parent / "run_yammbs_script.py").absolute()
     ff_path = (Path(__file__).parent / config.output_ff_path).absolute()
-    industry_benchmark_path = (Path(__file__).parent / "benchmarking" / "industry_benchmark").absolute()
+    industry_benchmark_path = (
+        Path(__file__).parent / "benchmarking" / "industry_benchmark"
+    ).absolute()
     cached_dataset_path = industry_benchmark_path / "input_data" / "filtered-industry-cached.json"
 
     # Set up directories
     output_dir = industry_benchmark_path / "output" / config.experiment_name
     output_dir.mkdir(parents=True, exist_ok=True)
-
 
     # Run benchmark script with subprocess
     args = [
@@ -151,7 +151,9 @@ def run_yammbs_benchmarking(config: WorkflowConfig) -> None:
 
     if output_dir.exists():
         # Skip
-        logger.info(f"Output directory {output_dir} already exists. Skipping benchmark for openff2.2.0.")
+        logger.info(
+            f"Output directory {output_dir} already exists. Skipping benchmark for openff2.2.0."
+        )
 
     else:
         # Create the output directory

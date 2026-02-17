@@ -74,11 +74,11 @@ check = { depends-on = ["format", "lint", "type-check"] }
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+extend-exclude = ["workflow/generate_new_types/create_angle_types_ring.ipynb"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "D"]
-ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D107"]
+ignore = ["C901","E402","E501"]
+select = ["B","C","E","F","W","B9"]
 
 [tool.mypy]
 python_version = "3.10"

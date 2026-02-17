@@ -1,32 +1,30 @@
 """Pydantic models. These will be stored as, and read from yaml files."""
 
 from pathlib import Path
+from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, validator
 
 
 class WorkflowConfig(BaseModel):
-    """Configuration for the workflow.
-    """
+    """Configuration for the workflow."""
 
     experiment_name: str = Field(default="", description="Name of the experiment.")
-    experiment_description: str = Field(
-        default="", description="Description of the experiment."
-    )
+    experiment_description: str = Field(default="", description="Description of the experiment.")
     data_dir: Path = Field(
-        default="data/espaloma", description="Directory where the data is stored."
+        default=Path("data/espaloma"), description="Directory where the data is stored."
     )
     get_data_fn: str = Field(
         default="get_data.get_data_espaloma", description="Function to get the data."
     )
     get_data_output_smiles: Path = Field(
-        default="data/espaloma/data-raw/smiles.json",
+        default=Path("data/espaloma/data-raw/smiles.json"),
         description="Output that snakemake will look for.",
     )
 
     starting_force_field_path: Path = Field(
-        default="input_ff/lj-sage-2-2-msm-0-expanded-torsions.offxml",
+        default=Path("input_ff/lj-sage-2-2-msm-0-expanded-torsions.offxml"),
         description="Path to the starting force field.",
     )
 
@@ -41,27 +39,21 @@ class WorkflowConfig(BaseModel):
 
     n_epochs: int = Field(default=1000, description="Number of epochs for training.")
 
-    learning_rate: float = Field(
-        default=0.01, description="Learning rate for training."
-    )
+    learning_rate: float = Field(default=0.01, description="Learning rate for training.")
 
     energy_weight: float = Field(default=1.0, description="Weight for the energy loss.")
 
     force_weight: float = Field(default=1.0, description="Weight for the force loss.")
 
-    torsion_weight: float = Field(
-        default=0.0, description="Weight for the torsion regularization."
-    )
+    torsion_weight: float = Field(default=0.0, description="Weight for the torsion regularization.")
 
-    torsion_reg: str = Field(
-        default="l1", description="Regularization for the torsion loss."
-    )
+    torsion_reg: str = Field(default="l1", description="Regularization for the torsion loss.")
 
-    attributes: dict = Field(
+    attributes: dict[str, Any] = Field(
         default_factory=dict, description="Trainable attributes for the force field."
     )
 
-    parameters: dict = Field(
+    parameters: dict[str, Any] = Field(
         default_factory=lambda: {
             "LinearBonds": {
                 "cols": ["k1", "k2"],
@@ -84,16 +76,12 @@ class WorkflowConfig(BaseModel):
     }
 
     @validator("parameters")
-    def check_parameters(cls, v):
+    def check_parameters(cls, v: dict[str, Any]) -> dict[str, Any]:
         """Make sure that if we have LinearBonds, we also have LinearAngles."""
         if "LinearBonds" in v and "LinearAngles" not in v:
-            raise ValueError(
-                "If you have LinearBonds, you must also have LinearAngles."
-            )
+            raise ValueError("If you have LinearBonds, you must also have LinearAngles.")
         if "LinearAngles" in v and "LinearBonds" not in v:
-            raise ValueError(
-                "If you have LinearAngles, you must also have LinearBonds."
-            )
+            raise ValueError("If you have LinearAngles, you must also have LinearBonds.")
         return v
 
     @property
@@ -145,14 +133,12 @@ class WorkflowConfig(BaseModel):
 
     @classmethod
     def from_file(cls, filename: str | Path) -> "WorkflowConfig":
-        """Load the configuration from a YAML file.
-        """
+        """Load the configuration from a YAML file."""
         with open(filename, "r") as f:
             data = yaml.safe_load(f)
             return cls(**data)
 
-    def to_file(self, filename: str | Path):
-        """Save the configuration to a YAML file with nice formatting.
-        """
+    def to_file(self, filename: str | Path) -> None:
+        """Save the configuration to a YAML file with nice formatting."""
         with open(filename, "w") as f:
             yaml.dump(self.dict(), f, default_flow_style=False, sort_keys=False)

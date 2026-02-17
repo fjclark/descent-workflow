@@ -4,6 +4,7 @@ import json
 import pathlib
 import subprocess
 import typing
+from typing import Any
 
 import datasets
 import deepchem as dc
@@ -12,6 +13,7 @@ import dgl
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import openff.toolkit
 import openff.units
 import openmm.unit
@@ -20,9 +22,9 @@ import torch
 from loguru import logger
 from tqdm import tqdm
 
-HARTEE_TO_KCAL = (
-    1.0 * openmm.unit.hartree * openmm.unit.AVOGADRO_CONSTANT_NA
-).value_in_unit(openmm.unit.kilocalorie_per_mole)
+HARTEE_TO_KCAL = (1.0 * openmm.unit.hartree * openmm.unit.AVOGADRO_CONSTANT_NA).value_in_unit(
+    openmm.unit.kilocalorie_per_mole
+)
 
 BOHR_TO_ANGSTROM = (1.0 * openmm.unit.bohr).value_in_unit(openmm.unit.angstrom)
 
@@ -110,15 +112,11 @@ def process_dataset_espaloma(data_dir: pathlib.Path) -> None:
     for source in ESPALOMA_SOURCES:
         source_dir = root_dir / source
 
-        entries = [
-            f for f in source_dir.glob("*") if f.is_dir() and not f.name.startswith(".")
-        ]
+        entries = [f for f in source_dir.glob("*") if f.is_dir() and not f.name.startswith(".")]
 
         duplicate_dir = root_dir / "duplicated-isomeric-smiles-merge"
 
-        entries_duplicate = list(
-            duplicate_dir.glob(f"*/{source.replace('-opt', '')}/*")
-        )
+        entries_duplicate = list(duplicate_dir.glob(f"*/{source.replace('-opt', '')}/*"))
         entries_duplicate = [
             f for f in entries_duplicate if f.is_dir() and not f.name.startswith(".")
         ]
@@ -194,18 +192,10 @@ def process_dataset_spice2(data_dir: pathlib.Path) -> None:
             all_smiles.add(smiles)
             n_conformers = record["conformations"].shape[0]
             assert len(record["dft_total_energy"]) == n_conformers
-            energies = [
-                record["dft_total_energy"][i] * HARTEE_TO_KCAL
-                for i in range(n_conformers)
-            ]
-            coords = [
-                record["conformations"][i] * BOHR_TO_ANGSTROM
-                for i in range(n_conformers)
-            ]
+            energies = [record["dft_total_energy"][i] * HARTEE_TO_KCAL for i in range(n_conformers)]
+            coords = [record["conformations"][i] * BOHR_TO_ANGSTROM for i in range(n_conformers)]
             forces = [
-                record["dft_total_gradient"][i]
-                * -1
-                * (HARTEE_TO_KCAL / BOHR_TO_ANGSTROM)
+                record["dft_total_gradient"][i] * -1 * (HARTEE_TO_KCAL / BOHR_TO_ANGSTROM)
                 for i in range(n_conformers)
             ]
             all_data.append(
@@ -220,9 +210,7 @@ def process_dataset_spice2(data_dir: pathlib.Path) -> None:
         dataset = descent.targets.energy.create_dataset(all_data)
         dataset.save_to_disk(output_dir)
         unique_smiles = dataset.unique("smiles")
-        logger.info(
-            f"Found {len(dataset)} ({len(unique_smiles)} unique) SMILES in SPICE2"
-        )
+        logger.info(f"Found {len(dataset)} ({len(unique_smiles)} unique) SMILES in SPICE2")
         with open(output_dir / "smiles.json", "w") as file:
             json.dump(list(unique_smiles), file)
 
@@ -238,8 +226,9 @@ def filter_spice2_dataset_by_forces(data_dir: pathlib.Path) -> None:
     dataset = datasets.load_from_disk(input_dir)
     data_df = dataset.to_pandas()
 
-    def get_rms(array: np.ndarray) -> float:
-        return np.sqrt(np.mean(array**2))
+    def get_rms(array: npt.NDArray[np.floating[Any]]) -> float:
+        result: float = float(np.sqrt(np.mean(array**2)))
+        return result
 
     data_df["rms_forces"] = data_df["forces"].apply(lambda x: get_rms(np.array(x)))
 
@@ -249,10 +238,7 @@ def filter_spice2_dataset_by_forces(data_dir: pathlib.Path) -> None:
     percentile_values = np.percentile(data_df["rms_forces"], percentile_intervals)
 
     # Create a dict of the percentiles
-    percentile_dict = {
-        interval: value
-        for interval, value in zip(percentile_intervals, percentile_values, strict=True)
-    }
+    percentile_dict = dict(zip(percentile_intervals, percentile_values, strict=True))
     logger.info(f"Percentiles: {percentile_dict}")
 
     # Plot boxplot of the rmse forces
@@ -324,9 +310,7 @@ def split_train_test_spice2(data_dir: pathlib.Path | str) -> None:
         else:
             raise RuntimeError("The smiles was not in training or testing")
 
-    logger.info(
-        f"Train: {len(train_index)}, Test: {len(test_index)}, Total: {len(input_dataset)}"
-    )
+    logger.info(f"Train: {len(train_index)}, Test: {len(test_index)}, Total: {len(input_dataset)}")
     train_split = input_dataset.select(indices=train_index)
     train_split.save_to_disk(output_dirs["train"])
     test_split = input_dataset.select(indices=test_index)
@@ -353,9 +337,10 @@ def get_data_spice2_force_filtered(data_dir: pathlib.Path | str) -> None:
     split_train_test_spice2(data_dir)
     logger.info("Done getting data for SPICE.")
 
-def get_qca_torsion_data(dataset_name: str,
-                         output_dir: pathlib.Path | str,
-                         spec_name: str = "default") -> None:
+
+def get_qca_torsion_data(
+    dataset_name: str, output_dir: pathlib.Path | str, spec_name: str = "default"
+) -> None:
     """Get the QCA torsion data in json format."""
     from openff.qcsubmit.results import TorsionDriveResultCollection
     from qcportal import PortalClient

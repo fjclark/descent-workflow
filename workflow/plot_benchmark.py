@@ -3,6 +3,7 @@
 import logging
 import warnings
 from pathlib import Path
+from typing import Any
 
 import click
 import loguru
@@ -26,8 +27,10 @@ warnings.filterwarnings("ignore", message="divide by zero", category=RuntimeWarn
 pandas.set_option("display.max_columns", None)
 
 
-def load_ids_to_remove(paths: list[Path] = []) -> list[int]:
-    """Load the list of problematic record ids which should be removed"""
+def load_ids_to_remove(paths: list[Path] | None = None) -> list[int]:
+    """Load the list of problematic record ids which should be removed."""
+    if paths is None:
+        paths = []
     ids_to_remove = []
     for path in paths:
         ids_to_remove.extend(numpy.loadtxt(path, dtype=int).tolist())
@@ -54,19 +57,17 @@ def load_bench(d: Path, ids_to_remove: list[int] | None = None) -> pandas.DataFr
         ret = ret[~ret["rec_id"].isin(ids_to_remove)]
         assert isinstance(ret, pandas.DataFrame)
     final_shape = ret.shape
-    logger.info(
-        f"removed {initial_shape[0] - final_shape[0]} rows with problematic rec_ids"
-    )
+    logger.info(f"removed {initial_shape[0] - final_shape[0]} rows with problematic rec_ids")
 
     logger.info(f"loaded {ret.shape} rows for {d}")
     return ret
 
 
-def load_benches(ffs, ids_to_remove: list[int]) -> list[pandas.DataFrame]:
+def load_benches(ffs: Any, ids_to_remove: list[int]) -> list[pandas.DataFrame]:
     return [load_bench(Path(ff), ids_to_remove) for ff in ffs]
 
 
-def merge_metrics(dfs, names, metric: str):
+def merge_metrics(dfs: list[pandas.DataFrame], names: list[str], metric: str) -> pandas.DataFrame:
     assert len(dfs) > 0, "must provide at least one dataframe"
     df = dfs[0][["rec_id", metric]].copy()
     df.columns = ["rec_id", names[0]]
@@ -78,7 +79,7 @@ def merge_metrics(dfs, names, metric: str):
     return df
 
 
-def plot_ddes(dfs: list[pandas.DataFrame], names, out_dir):
+def plot_ddes(dfs: list[pandas.DataFrame], names: list[str], out_dir: Path) -> None:
     figure, axis = pyplot.subplots(figsize=(6, 4))
     ddes = merge_metrics(dfs, names, "dde")
     ax = sea.histplot(
@@ -112,7 +113,7 @@ def plot_ddes(dfs: list[pandas.DataFrame], names, out_dir):
     pyplot.close()
 
 
-def plot_rmsds(dfs: list[pandas.DataFrame], names, out_dir):
+def plot_rmsds(dfs: list[pandas.DataFrame], names: list[str], out_dir: Path) -> None:
     figure, axis = pyplot.subplots(figsize=(6, 4))
     rmsds = merge_metrics(dfs, names, "rmsd")
     ax = sea.kdeplot(data=numpy.log10(rmsds.iloc[:, 1:]))
@@ -135,7 +136,7 @@ def plot_rmsds(dfs: list[pandas.DataFrame], names, out_dir):
     pyplot.close()
 
 
-def plot_tfds(dfs: list[pandas.DataFrame], names, out_dir):
+def plot_tfds(dfs: list[pandas.DataFrame], names: list[str], out_dir: Path) -> None:
     figure, axis = pyplot.subplots(figsize=(6, 4))
     tfds = merge_metrics(dfs, names, "tfd")
     ax = sea.kdeplot(data=numpy.log10(tfds.iloc[:, 1:]))
@@ -159,7 +160,7 @@ def plot_tfds(dfs: list[pandas.DataFrame], names, out_dir):
     pyplot.close()
 
 
-def plot_icrmsds(dfs, names, out_dir):
+def plot_icrmsds(dfs: list[pandas.DataFrame], names: list[str], out_dir: Path) -> None:
     titles = {
         "bonds": "Bond Internal Coordinate RMSDs",
         "angles": "Angle Internal Coordinate RMSDs",
@@ -185,25 +186,28 @@ def plot_icrmsds(dfs, names, out_dir):
         pyplot.close()
 
 
-def plot(ffs, out_dir: str, ids_to_remove_paths: list[Path] = []) -> None:
-    """Plot each of the `dde`, `rmsd`, and `tfd` CSV files found in `ff/output`
-    for `ff` in `ffs` and write the resulting PNG images to out_dir.
+def plot(ffs: Any, out_dir: str, ids_to_remove_paths: list[Path] | None = None) -> None:
+    """Plot each of the `dde`, `rmsd`, and `tfd` CSV files found in `ff/output`.
+
+    For `ff` in `ffs` and write the resulting PNG images to out_dir.
     """
-    out_dir = Path(out_dir)
-    out_dir.mkdir(exist_ok=True)
+    if ids_to_remove_paths is None:
+        ids_to_remove_paths = []
+    out_dir_path = Path(out_dir)
+    out_dir_path.mkdir(exist_ok=True)
 
     ids_to_remove = load_ids_to_remove(ids_to_remove_paths)
     dfs = load_benches(ffs, ids_to_remove=ids_to_remove)
 
     names = [Path(ff).name for ff in ffs]
 
-    for name, df in zip(names, dfs):
+    for name, df in zip(names, dfs, strict=True):
         df.to_csv(f"{out_dir}/{name}.csv")
 
-    plot_rmsds(dfs, names, out_dir)
-    plot_ddes(dfs, names, out_dir)
-    plot_tfds(dfs, names, out_dir)
-    plot_icrmsds(dfs, names, out_dir)
+    plot_rmsds(dfs, names, out_dir_path)
+    plot_ddes(dfs, names, out_dir_path)
+    plot_tfds(dfs, names, out_dir_path)
+    plot_icrmsds(dfs, names, out_dir_path)
 
 
 @click.command()
@@ -216,8 +220,15 @@ def plot(ffs, out_dir: str, ids_to_remove_paths: list[Path] = []) -> None:
     type=click.Path(exists=True),
     help="Path to file containing problematic record ids to remove",
 )
-def main(forcefields, output_dir, ids_to_remove_paths=[]):
-    plot(forcefields, output_dir, ids_to_remove_paths)
+def main(
+    forcefields: tuple[str, ...],
+    output_dir: str,
+    ids_to_remove_paths: tuple[str, ...] | None = None,
+) -> None:
+    if ids_to_remove_paths is None:
+        ids_to_remove_paths = ()
+    ids_to_remove_paths_list = [Path(p) for p in ids_to_remove_paths]
+    plot(forcefields, output_dir, ids_to_remove_paths_list)
 
 
 if __name__ == "__main__":

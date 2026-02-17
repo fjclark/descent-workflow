@@ -8,6 +8,8 @@ Note: Mainly from: https://github.com/SimonBoothroyd/descent-ff/blob/main/energy
 
 import functools
 import multiprocessing
+import multiprocessing.pool
+from typing import Any
 
 import datasets
 import descent.targets.energy
@@ -32,15 +34,13 @@ def compute_best_rms(pairs: list[tuple[int, int]], mol: Chem.Mol) -> list[float]
     atom_map = [(i, i) for i in range(mol.GetNumAtoms())]
 
     return [
-        rdMolAlign.AlignMol(
-            Chem.Mol(mol), Chem.Mol(mol), int(i), int(j), atomMap=atom_map
-        )
+        rdMolAlign.AlignMol(Chem.Mol(mol), Chem.Mol(mol), int(i), int(j), atomMap=atom_map)
         for i, j in pairs
     ]
 
 
 def cluster_confs(
-    entry: descent.targets.energy.Entry, pool: multiprocessing.Pool
+    entry: descent.targets.energy.Entry, pool: multiprocessing.pool.Pool
 ) -> descent.targets.energy.Entry:
     try:
         smiles = entry["smiles"]
@@ -50,9 +50,7 @@ def cluster_confs(
         coords = entry["coords"].reshape(len(energy_ref), -1, 3).tolist()
         coords = [c * openff.units.unit.angstrom for c in coords]
 
-        mol_openff = openff.toolkit.Molecule.from_mapped_smiles(
-            smiles, allow_undefined_stereo=True
-        )
+        mol_openff = openff.toolkit.Molecule.from_mapped_smiles(smiles, allow_undefined_stereo=True)
         mol_openff._conformers = coords
 
         mol_rdkit: Chem.Mol = Chem.RemoveHs(mol_openff.to_rdkit())
@@ -60,14 +58,14 @@ def cluster_confs(
 
         conf_pairs = [(i, j) for i in range(len(conf_ids)) for j in range(i)]
 
-        conf_pairs = numpy.array_split(numpy.array(conf_pairs), N_WORKERS)
+        conf_pairs_split: list[Any] = numpy.array_split(numpy.array(conf_pairs), N_WORKERS)
 
         rms_fn = functools.partial(compute_best_rms, mol=mol_rdkit)
 
-        dists = list(tqdm.tqdm(pool.imap(rms_fn, conf_pairs), total=len(conf_pairs)))
+        dists = list(tqdm.tqdm(pool.imap(rms_fn, conf_pairs_split), total=len(conf_pairs_split)))
         dists = [d for dist in dists for d in dist]
 
-        clusters = Butina.ClusterData(
+        clusters = Butina.ClusterData(  # type: ignore[no-untyped-call]
             dists, len(conf_ids), 0.25, isDistData=True, reordering=True
         )
         cluster_ids = [cluster[0] for cluster in clusters]
@@ -89,16 +87,14 @@ def cluster_confs(
 
 def filter_and_cluster_espaloma(config: WorkflowConfig) -> None:
     for source in ESPALOMA_SOURCES:
-        dataset = datasets.Dataset.load_from_disk(
-            f"{config.data_dir}/data-raw/{source}"
-        )
+        dataset = datasets.Dataset.load_from_disk(f"{config.data_dir}/data-raw/{source}")
         unique_smiles = descent.targets.energy.extract_smiles(dataset)
 
         _, topologies = torch.load(config.torch_ffs_and_tops_path)
         topologies = {k: v for k, v in topologies.items() if k in unique_smiles}
 
         dataset_size = len(dataset)
-        dataset = dataset.filter(lambda d: d["smiles"] in topologies)
+        dataset = dataset.filter(lambda d, t=topologies: d["smiles"] in t)
         logger.info(f"Removed non-parameterisable: {dataset_size} -> {len(dataset)}")
 
         if source == "gen2-opt":
@@ -122,7 +118,7 @@ def filter_spice2(config: WorkflowConfig) -> None:
         topologies = {k: v for k, v in topologies.items() if k in unique_smiles}
 
         dataset_size = len(dataset)
-        dataset = dataset.filter(lambda d: d["smiles"] in topologies)
+        dataset = dataset.filter(lambda d, t=topologies: d["smiles"] in t)
         logger.info(f"Removed non-parameterisable: {dataset_size} -> {len(dataset)}")
 
         dataset.save_to_disk(config.filtered_data_dir / source.name)
@@ -133,17 +129,19 @@ def is_charged(smiles: str) -> bool:
     mol = Molecule.from_mapped_smiles(smiles, allow_undefined_stereo=True)
     rdmol = mol.to_rdkit()
     # Get total charge of the molecule
-    total_charge = sum(atom.GetFormalCharge() for atom in rdmol.GetAtoms())
+    total_charge: int = sum(atom.GetFormalCharge() for atom in rdmol.GetAtoms())
     return total_charge != 0
 
 
 def has_any_formal_charge(smiles: str) -> bool:
-    """Check if a molecule has any atoms with a formal charge. Note that
-    a molecule with a net charge of 0 can still have atoms with formal charges.
+    """Check if a molecule has any atoms with a formal charge.
+
+    Note that a molecule with a net charge of 0 can still have atoms with formal charges.
     """
     mol = Molecule.from_mapped_smiles(smiles, allow_undefined_stereo=True)
     rdmol = mol.to_rdkit()
-    return any(atom.GetFormalCharge() != 0 for atom in rdmol.GetAtoms())
+    result: bool = any(atom.GetFormalCharge() != 0 for atom in rdmol.GetAtoms())
+    return result
 
 
 def filter_neutral_spice2(config: WorkflowConfig) -> None:
@@ -159,7 +157,7 @@ def filter_neutral_spice2(config: WorkflowConfig) -> None:
         topologies = {k: v for k, v in topologies.items() if k in unique_smiles}
 
         dataset_size = len(dataset)
-        dataset = dataset.filter(lambda d: d["smiles"] in topologies)
+        dataset = dataset.filter(lambda d, t=topologies: d["smiles"] in t)
         logger.info(f"Removed non-parameterisable: {dataset_size} -> {len(dataset)}")
         dataset = dataset.filter(lambda d: not is_charged(d["smiles"]))
         logger.info(f"Removed charged molecules: {dataset_size} -> {len(dataset)}")
@@ -168,7 +166,10 @@ def filter_neutral_spice2(config: WorkflowConfig) -> None:
 
 
 def filter_no_formal_charges_spice2(config: WorkflowConfig) -> None:
-    """Filter out any molecules which can't be parameterised, or have any formal charges on any atoms."""
+    """Filter out any molecules which can't be parameterised.
+
+    This also filters out molecules with any formal charges on any atoms.
+    """
     sources = [config.data_dir / "data-train", config.data_dir / "data-test"]
     logger.info(f"Filtering {sources}")
 
@@ -180,11 +181,9 @@ def filter_no_formal_charges_spice2(config: WorkflowConfig) -> None:
         topologies = {k: v for k, v in topologies.items() if k in unique_smiles}
 
         dataset_size = len(dataset)
-        dataset = dataset.filter(lambda d: d["smiles"] in topologies)
+        dataset = dataset.filter(lambda d, t=topologies: d["smiles"] in t)
         logger.info(f"Removed non-parameterisable: {dataset_size} -> {len(dataset)}")
         dataset = dataset.filter(lambda d: not has_any_formal_charge(d["smiles"]))
-        logger.info(
-            f"Removed molecules with formal charges: {dataset_size} -> {len(dataset)}"
-        )
+        logger.info(f"Removed molecules with formal charges: {dataset_size} -> {len(dataset)}")
 
         dataset.save_to_disk(config.filtered_data_dir / source.name)

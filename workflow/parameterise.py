@@ -22,6 +22,7 @@ import torch
 import tqdm
 from loguru import logger
 from models import WorkflowConfig
+from openff.interchange import Interchange
 from openff.units import unit as off_unit
 
 _ANGSTROM = off_unit.angstrom
@@ -154,13 +155,9 @@ def linearise_harmonics_force_field(
 
     for potential in ff.potentials:
         if potential.type in {"Bonds", "UreyBradleys"}:
-            ff_copy.potentials.append(
-                _linearize_bond_parameters(potential, device_type)
-            )
+            ff_copy.potentials.append(_linearize_bond_parameters(potential, device_type))
         elif potential.type == "Angles":
-            ff_copy.potentials.append(
-                _linearize_angle_parameters(potential, device_type)
-            )
+            ff_copy.potentials.append(_linearize_angle_parameters(potential, device_type))
         else:
             ff_copy.potentials.append(potential)
 
@@ -177,9 +174,7 @@ def linearise_harmonics_topology(
     """
     topology_copy = topology.to(device_type)
     if "Bonds" in topology_copy.parameters:
-        topology_copy.parameters["LinearBonds"] = copy.deepcopy(
-            topology_copy.parameters["Bonds"]
-        )
+        topology_copy.parameters["LinearBonds"] = copy.deepcopy(topology_copy.parameters["Bonds"])
         del topology_copy.parameters["Bonds"]
     if "UreyBradleys" in topology_copy.parameters:
         topology_copy.parameters["LinearUreyBradleys"] = copy.deepcopy(
@@ -187,17 +182,13 @@ def linearise_harmonics_topology(
         )
         del topology_copy.parameters["Bonds"]
     if "Angles" in topology_copy.parameters:
-        topology_copy.parameters["LinearAngles"] = copy.deepcopy(
-            topology_copy.parameters["Angles"]
-        )
+        topology_copy.parameters["LinearAngles"] = copy.deepcopy(topology_copy.parameters["Angles"])
         del topology_copy.parameters["Angles"]
     return topology_copy
 
 
 # From https://github.com/thomasjamespope/bespokefit_smee/tree/main
-def linearize_harmonics(
-    ff: smee.TensorForceField, device_type: str
-) -> smee.TensorForceField:
+def linearize_harmonics(ff: smee.TensorForceField, device_type: str) -> smee.TensorForceField:
     """Linearize the harmonic potential parameters in the forcefield for more robust optimization"""
     ff_copy = copy.deepcopy(ff)
     ff_copy.potentials = []
@@ -282,9 +273,7 @@ def build_interchange(
 def apply_parameters(
     unique_smiles: list[str], *force_field_paths: str, linearise_harm: bool = False
 ) -> tuple[smee.TensorForceField, dict[str, smee.TensorTopology]]:
-    build_interchange_fn = functools.partial(
-        build_interchange, force_field_paths=force_field_paths
-    )
+    build_interchange_fn = functools.partial(build_interchange, force_field_paths=force_field_paths)
 
     with multiprocessing.get_context("spawn").Pool() as pool:
         interchanges = list(
@@ -298,20 +287,22 @@ def apply_parameters(
             )
         )
 
-    unique_smiles, interchanges = zip(
-        *[(s, i) for s, i in zip(unique_smiles, interchanges) if i is not None]
-    )
+    # Filter out None interchanges
+    unique_smiles_filtered: list[str] = [
+        s for s, i in zip(unique_smiles, interchanges, strict=True) if i is not None
+    ]
+    interchanges_filtered: list[Interchange] = [
+        i for s, i in zip(unique_smiles, interchanges, strict=True) if i is not None
+    ]
 
-    force_field, topologies = smee.converters.convert_interchange(interchanges)
+    force_field, topologies = smee.converters.convert_interchange(interchanges_filtered)
 
     if linearise_harm:
         force_field = linearise_harmonics_force_field(force_field, device_type="cpu")
         for topology in topologies:
             topology = linearise_harmonics_topology(topology, device_type="cpu")
 
-    return force_field, {
-        smiles: topology for smiles, topology in zip(unique_smiles, topologies)
-    }
+    return force_field, dict(zip(unique_smiles_filtered, topologies, strict=True))
 
 
 def create_torch_ff_and_top(config: WorkflowConfig) -> None:
@@ -321,9 +312,7 @@ def create_torch_ff_and_top(config: WorkflowConfig) -> None:
     Topologies are loaded from ``smiles_path``, which should be a JSON file
     containing a list of SMILES.
     """
-    smiles_per_source: dict[str, list[str]] = json.loads(
-        config.get_data_output_smiles.read_text()
-    )
+    smiles_per_source: dict[str, list[str]] = json.loads(config.get_data_output_smiles.read_text())
 
     unique_smiles_set = set()
 

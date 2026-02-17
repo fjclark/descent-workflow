@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import loguru
 import torch
@@ -33,13 +34,13 @@ def pt_ff_to_off_ff(
                 smirks = potential.parameter_keys[i].id
                 ff_parameter = handler[smirks]
                 opt_parameters = potential.parameters[i].detach().cpu()
-                for j, (p, unit) in enumerate(zip(parameter_names, parameter_units)):
-                    setattr(ff_parameter, p, opt_parameters[j] * unit)
+                for j, (param_name, unit) in enumerate(
+                    zip(parameter_names, parameter_units, strict=True)
+                ):
+                    setattr(ff_parameter, param_name, opt_parameters[j] * unit)
 
         if potential_type in ["LinearBonds", "LinearAngles", "LinearUreyBradleys"]:
-            handler = base_force_field.get_parameter_handler(
-                potential_type.replace("Linear", "")
-            )
+            handler = base_force_field.get_parameter_handler(potential_type.replace("Linear", ""))
             for i in range(len(potential.parameters)):
                 smirks = potential.parameter_keys[i].id
                 ff_parameter = handler[smirks]
@@ -66,12 +67,10 @@ def pt_ff_to_off_ff(
                     angle = (b * parameter_units[2]).to(off_unit.degree)
                     # Reflect the angle if it is negative
                     if angle < 0 * off_unit.degree:
-                        angle = -angle
+                        angle = -angle  # type: ignore[operator]
                     # Ensure the angle is within 0 to 360 degrees
                     elif angle > 360 * off_unit.degree:
-                        angle = angle - (angle // (360 * off_unit.degree)) * (
-                            360 * off_unit.degree
-                        )
+                        angle = angle - (angle // (360 * off_unit.degree)) * (360 * off_unit.degree)
                     # Reflect the angle about 180 degrees if it is greater than 180
                     if angle > 180 * off_unit.degree:
                         angle = 360 * off_unit.degree - angle
@@ -80,7 +79,7 @@ def pt_ff_to_off_ff(
         elif potential_type in ["ProperTorsions"]:
             handler = base_force_field.get_parameter_handler(potential_type)
             # we need to collect the k values into a list accross the entries
-            collection_data = {}
+            collection_data: dict[str, dict[int, Any]] = {}
             for i in range(len(potential.parameters)):
                 smirks = potential.parameter_keys[i].id
                 if smirks not in collection_data:
@@ -88,9 +87,9 @@ def pt_ff_to_off_ff(
                 opt_parameters = potential.parameters[i].detach().cpu()
                 # find k and the perodicity
                 k_index = parameter_names.index("k")
-                k = opt_parameters[k_index] * parameter_units[k_index]
-                p = int(opt_parameters[parameter_names.index("periodicity")])
-                collection_data[smirks][p] = k
+                k = opt_parameters[k_index] * parameter_units[k_index]  # type: ignore[assignment]
+                periodicity = int(opt_parameters[parameter_names.index("periodicity")])
+                collection_data[smirks][periodicity] = k
             # now update the force field
             for smirks, tor_data in collection_data.items():
                 ff_parameter = handler[smirks]
@@ -115,15 +114,20 @@ def pt_ff_to_off_ff(
                 f"Only setting the attributes (and not the parameters) for {potential_type} potentials."
             )
             handler = base_force_field.get_parameter_handler(potential_type)
-            for attr_name, attr_unit, attr_val in zip(
-                potential.attribute_cols,
-                potential.attribute_units,
-                potential.attributes,
-                strict=True,
+            if (
+                potential.attribute_cols is not None
+                and potential.attribute_units is not None
+                and potential.attributes is not None
             ):
-                # Convert scale_14 to scale14
-                attr_name = attr_name.replace("_", "")
-                setattr(handler, attr_name, attr_val * attr_unit)
+                for attr_name, attr_unit, attr_val in zip(
+                    potential.attribute_cols,
+                    potential.attribute_units,
+                    potential.attributes,
+                    strict=True,
+                ):
+                    # Convert scale_14 to scale14
+                    attr_name = attr_name.replace("_", "")
+                    setattr(handler, attr_name, attr_val * attr_unit)
 
     return base_force_field
 
@@ -134,14 +138,10 @@ def pt_file_to_offxml(
     tensor_force_field_path: str | Path,
 ) -> None:
     """Convert the FF from pt to offxml format."""
-    logger.info(
-        f"Converting {tensor_force_field_path} to OFF format with base {base_force_field}"
-    )
+    logger.info(f"Converting {tensor_force_field_path} to OFF format with base {base_force_field}")
 
     tensor_ff = torch.load(tensor_force_field_path)
-    base_ff = ForceField(
-        base_force_field, load_plugins=True, allow_cosmetic_attributes=True
-    )
+    base_ff = ForceField(base_force_field, load_plugins=True, allow_cosmetic_attributes=True)
 
     ff = pt_ff_to_off_ff(base_ff, tensor_ff)
     ff.to_file(output)

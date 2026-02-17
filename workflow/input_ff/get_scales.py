@@ -4,8 +4,7 @@ import typer
 
 
 def main(tops_and_ff_file: str) -> None:
-    """Get the scales for the force field parameters in the given topology and force field file.
-    """
+    """Get the scales for the force field parameters in the given topology and force field file."""
     # Load the topology and force field
     loaded = torch.load(tops_and_ff_file)
     if type(loaded) is tuple:
@@ -23,9 +22,7 @@ def main(tops_and_ff_file: str) -> None:
             mean = np.mean(params)
             std = np.std(params)
             scale = 1 / mean
-            print(
-                f"  {col_name}: mean = {mean:.4f}, std = {std:.4f}, scale = {scale:.4f}"
-            )
+            print(f"  {col_name}: mean = {mean:.4f}, std = {std:.4f}, scale = {scale:.4f}")
 
 
 if __name__ == "__main__":

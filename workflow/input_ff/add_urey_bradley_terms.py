@@ -66,9 +66,8 @@ def add_urey_bradley_terms(forcefield: ForceField) -> ForceField:
     return new_ff
 
 
-def main(input_ff_path: Path, output_ff_path: Path):
-    """Add Urey-Bradley terms to a supplied OpenFF force field.
-    """
+def main(input_ff_path: Path, output_ff_path: Path) -> None:
+    """Add Urey-Bradley terms to a supplied OpenFF force field."""
     forcefield = ForceField(str(input_ff_path), load_plugins=True)
     new_forcefield = add_urey_bradley_terms(forcefield)
     new_forcefield.to_file(str(output_ff_path))

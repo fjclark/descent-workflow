@@ -1966,7 +1966,7 @@ packages:
 - pypi: ./
   name: descent-workflow
   version: 0.1.0
-  sha256: 6e9dd27bf9689eda5afb07c9b7ccc35ff3a08dd092fffe19853f4811fee75360
+  sha256: 9e2bc855f19bfa993fea942d54b3137af020d4b2deee4a5a984528ee7ed1bb00
   requires_python: '>=3.10'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/dgl-2.1.0-cuda120py312h22db543_0.conda
   sha256: f58639c555493d8f15d02b3d2eba8fd97d2d6a7373ee64ef033359d50951e4d5

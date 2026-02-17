@@ -4,7 +4,7 @@ dihedral indices, which are not provided in the dataset.
 
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.request import urlretrieve
 
 import h5py
@@ -92,7 +92,7 @@ def download_raw_data(
 
 def get_mols_with_conformers_and_energies(
     h5file: Path, jsonfile: Path
-) -> dict[str, Molecule]:
+) -> tuple[dict[str, Molecule], dict[str, Any]]:
     """Load molecules and their conformers from H5 and JSON files.
 
     Args:
@@ -100,8 +100,8 @@ def get_mols_with_conformers_and_energies(
         jsonfile (Path): Path to the JSON file containing SMILES data.
 
     Returns:
-        dict[str, Molecule]: Dictionary mapping molecule names to Molecule objects with conformers.
-        dict[str, np.ndarray]: Dictionary mapping molecule names to their energies.
+        tuple: Dictionary mapping molecule names to Molecule objects with conformers,
+               and dictionary mapping molecule names to their energies.
 
     """
     with open(jsonfile, "r") as f:
@@ -113,17 +113,13 @@ def get_mols_with_conformers_and_energies(
     with h5py.File(h5file, "r") as h5f:
         for mol_name, smiles in smiles_data.items():
             group = h5f[mol_name]
-            coords = [
-                c * unit.angstrom for c in group["coords"][:]
-            ]  # Convert to OpenFF units
-            energies = (
-                group["energy"][:] * unit.kilocalorie_per_mole
-            )  # Convert to OpenFF units
+            coords = [c * unit.angstrom for c in group["coords"][:]]  # Convert to OpenFF units
+            energies = group["energy"][:] * unit.kilocalorie_per_mole  # Convert to OpenFF units
             # Subtract minimum energy to get relative energies
             energies -= np.min(energies)
 
             off_mol = Molecule.from_mapped_smiles(smiles, allow_undefined_stereo=True)
-            off_mol._conformers = [coord for coord in coords]
+            off_mol._conformers = list(coords)
 
             mols[mol_name] = off_mol
             all_energies[mol_name] = energies
@@ -131,7 +127,7 @@ def get_mols_with_conformers_and_energies(
     return mols, all_energies
 
 
-def get_dihedral_angles(mol: Molecule, atom_indices: list[list[int]]) -> list[float]:
+def get_dihedral_angles(mol: Molecule, atom_indices: list[list[int]]) -> list[list[float]]:
     """Calculate dihedral angles for a list of conformers given the atom indices.
 
     Args:
@@ -140,7 +136,7 @@ def get_dihedral_angles(mol: Molecule, atom_indices: list[list[int]]) -> list[fl
         atom_indices list[list[int]]: List of lists of four atom indices defining the dihedrals.
 
     Returns:
-        list[list[float]]: List of lists of dihedral angles for each set of atoms for each conformer.
+        list[list[float]]: List of lists of dihedral angles for each set of atoms.
 
     """
     confs = mol.conformers
@@ -155,8 +151,8 @@ def get_dihedral_angles(mol: Molecule, atom_indices: list[list[int]]) -> list[fl
         angles = [angle + 360 if angle < 0 else angle for angle in angles]
 
     # Rearrange the angles list so that it has shape (n_dihedrals, n_conformers)
-    angles_list = np.array(angles_list).T.tolist()
-    return angles_list
+    angles_list_transposed: list[list[float]] = np.array(angles_list).T.tolist()
+    return angles_list_transposed
 
 
 def get_angle_periodic_diff(angle1: float, angle2: float) -> float:
@@ -171,27 +167,25 @@ def get_angle_periodic_diff(angle1: float, angle2: float) -> float:
 
     """
     diff = angle2 - angle1
-    diff = (diff + 180) % 360 - 180  # Wrap to [-180, 180]
-    return diff
+    diff_wrapped: float = float((diff + 180) % 360 - 180)  # Wrap to [-180, 180]
+    return diff_wrapped
 
 
 def are_multiples_of_spacing(
-    angles: list[float] | npt.NDArray,
+    angles: list[float] | npt.NDArray[np.floating[Any]],
     spacing_multiple: float = 5.0,
     tolerance: float = 0.02,
     n_allowed_deviations: int = 0,
 ) -> bool:
     """Check if all angles are multiples of the given spacing within a tolerance."""
     is_close = np.isclose(
-        [
-            min(abs(angle % spacing_multiple), abs(angle % -spacing_multiple))
-            for angle in angles
-        ],
+        [min(abs(angle % spacing_multiple), abs(angle % -spacing_multiple)) for angle in angles],
         0,
         atol=tolerance,
     )
 
-    return np.sum(~is_close) <= n_allowed_deviations
+    result: bool = bool(np.sum(~is_close) <= n_allowed_deviations)
+    return result
 
 
 def is_torsion_scan(
@@ -229,7 +223,7 @@ def is_torsion_scan(
             return False
 
     angle_diffs = np.array(
-        [get_angle_periodic_diff(i, j) for i, j in zip(angles[:-1], angles[1:])]
+        [get_angle_periodic_diff(i, j) for i, j in zip(angles[:-1], angles[1:], strict=True)]
     )
 
     return are_multiples_of_spacing(
@@ -269,17 +263,14 @@ def get_dihedral_indices_and_angles(
 
     angles_list = get_dihedral_angles(mol, indices_list)
     angles_by_indices = {
-        tuple(indices): angle
-        for indices, angle in zip(indices_list, angles_list, strict=True)
+        tuple(indices): angle for indices, angle in zip(indices_list, angles_list, strict=True)
     }
 
     # Now, find all sets of indices where the angles are spaced by ~15 degrees.
     torsion_scans = {
         indices: angles
         for indices, angles in angles_by_indices.items()
-        if is_torsion_scan(
-            angles, spacing_multiple=spacing_multiple, check_absolute=check_absolute
-        )
+        if is_torsion_scan(angles, spacing_multiple=spacing_multiple, check_absolute=check_absolute)
     }
 
     if not torsion_scans:
@@ -287,10 +278,12 @@ def get_dihedral_indices_and_angles(
 
     if len(torsion_scans) > 1:
         raise ValueError(
-            f"Multiple torsion scans ({len(torsion_scans)}) found for molecule {name}: {torsion_scans}."
+            f"Multiple torsion scans ({len(torsion_scans)}) found for molecule {name}: "
+            f"{torsion_scans}."
         )
 
-    return list(torsion_scans.items())[0]
+    torsion_item = list(torsion_scans.items())[0]
+    return torsion_item
 
 
 def can_parameterise(mol: Molecule, ff_names: list[str]) -> bool:
@@ -309,9 +302,7 @@ def can_parameterise(mol: Molecule, ff_names: list[str]) -> bool:
         try:
             Interchange.from_smirnoff(ff, [mol])
         except Exception as e:
-            logger.warning(
-                f"Could not parameterise molecule {mol.to_smiles()} with {ff_name}: {e}"
-            )
+            logger.warning(f"Could not parameterise molecule {mol.to_smiles()} with {ff_name}: {e}")
             return False
 
     return True
@@ -320,8 +311,8 @@ def can_parameterise(mol: Molecule, ff_names: list[str]) -> bool:
 def create_qca_torsion_dataset(
     indices_and_angles: dict[str, tuple[tuple[int, int, int, int], list[float]]],
     mols: dict[str, Molecule],
-    all_energies: dict[str, np.ndarray],
-):
+    all_energies: dict[str, Any],
+) -> QCArchiveTorsionDataset:
     """Create a QCArchiveTorsionDataset from torsion scan data and save to a JSON file.
 
     Args:
@@ -347,13 +338,9 @@ def create_qca_torsion_dataset(
         mapped_smiles = mol.to_smiles(mapped=True)
 
         coords = np.array([conf.m_as(unit.angstrom) for conf in mol.conformers])
-        coords_dict = {
-            angle: coord for angle, coord in zip(angles, coords, strict=True)
-        }
+        coords_dict = dict(zip(angles, coords, strict=True))
         energies = all_energies[name].m_as(unit.kilocalorie_per_mole)
-        energies_dict = {
-            angle: energy for angle, energy in zip(angles, energies, strict=True)
-        }
+        energies_dict = dict(zip(angles, energies, strict=True))
 
         qm_torsions.append(
             QCArchiveTorsionProfile(
@@ -365,30 +352,25 @@ def create_qca_torsion_dataset(
             )
         )
 
-    logger.info(
-        f"Created {len(qm_torsions)} torsion profiles from {len(mols)} molecules."
-    )
+    logger.info(f"Created {len(qm_torsions)} torsion profiles from {len(mols)} molecules.")
 
     return QCArchiveTorsionDataset(qm_torsions=qm_torsions)
 
 
 def get_data_byte_dance(
     output_dir: str, dataset_name: Literal["BDTorsionInRing", "BDTorsionNonRing"]
-):
-    """Download the ByteDance torsion dataset, process it to find dihedral indices and angles,
-    and return a QCArchiveTorsionDataset.
+) -> None:
+    """Download the ByteDance torsion dataset, process it to find dihedral indices and angles.
 
     Args:
-        output_dir (Path): Directory to download and store the data.
-        dataset_name (str): Name of the dataset to download. Either "BDTorsionInRing" or "BDTorsionNonRing".
-
-    Returns:
-        QCArchiveTorsionDataset: The processed torsion dataset.
+        output_dir (str): Directory to download and store the data.
+        dataset_name (str): Name of the dataset to download.
+            Either "BDTorsionInRing" or "BDTorsionNonRing".
 
     """
-    output_dir = Path(output_dir)
+    output_dir_path = Path(output_dir)
     logger.info(f"Getting ByteDance torsion data for dataset {dataset_name}")
-    local_paths = download_raw_data(output_dir, dataset_name)
+    local_paths = download_raw_data(output_dir_path, dataset_name)
     mols, all_energies = get_mols_with_conformers_and_energies(
         local_paths[H5_FILES[dataset_name]], local_paths[JSON_FILES[dataset_name]]
     )
@@ -404,7 +386,7 @@ def get_data_byte_dance(
 
     torsion_dataset = create_qca_torsion_dataset(indices_and_angles, mols, all_energies)
 
-    output_path = output_dir / "qca-torsion-data.json"
+    output_path = output_dir_path / "qca-torsion-data.json"
     with open(output_path, "w") as f:
         f.write(torsion_dataset.json())
 
