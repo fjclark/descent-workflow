@@ -1,17 +1,25 @@
 """Pydantic models. These will be stored as, and read from yaml files."""
 
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, validator
 
+__version__ = version("descent-workflow")
+
 
 class WorkflowConfig(BaseModel):
     """Configuration for the workflow."""
 
+    version: str = Field(
+        description="Version of the workflow config. Must match major.minor version of descent_workflow."
+    )
     experiment_name: str = Field(default="", description="Name of the experiment.")
-    experiment_description: str = Field(default="", description="Description of the experiment.")
+    experiment_description: str = Field(
+        default="", description="Description of the experiment."
+    )
     data_dir: Path = Field(
         default=Path("data/espaloma"), description="Directory where the data is stored."
     )
@@ -39,15 +47,21 @@ class WorkflowConfig(BaseModel):
 
     n_epochs: int = Field(default=1000, description="Number of epochs for training.")
 
-    learning_rate: float = Field(default=0.01, description="Learning rate for training.")
+    learning_rate: float = Field(
+        default=0.01, description="Learning rate for training."
+    )
 
     energy_weight: float = Field(default=1.0, description="Weight for the energy loss.")
 
     force_weight: float = Field(default=1.0, description="Weight for the force loss.")
 
-    torsion_weight: float = Field(default=0.0, description="Weight for the torsion regularization.")
+    torsion_weight: float = Field(
+        default=0.0, description="Weight for the torsion regularization."
+    )
 
-    torsion_reg: str = Field(default="l1", description="Regularization for the torsion loss.")
+    torsion_reg: str = Field(
+        default="l1", description="Regularization for the torsion loss."
+    )
 
     attributes: dict[str, Any] = Field(
         default_factory=dict, description="Trainable attributes for the force field."
@@ -79,9 +93,53 @@ class WorkflowConfig(BaseModel):
     def check_parameters(cls, v: dict[str, Any]) -> dict[str, Any]:
         """Make sure that if we have LinearBonds, we also have LinearAngles."""
         if "LinearBonds" in v and "LinearAngles" not in v:
-            raise ValueError("If you have LinearBonds, you must also have LinearAngles.")
+            raise ValueError(
+                "If you have LinearBonds, you must also have LinearAngles."
+            )
         if "LinearAngles" in v and "LinearBonds" not in v:
-            raise ValueError("If you have LinearAngles, you must also have LinearBonds.")
+            raise ValueError(
+                "If you have LinearAngles, you must also have LinearBonds."
+            )
+        return v
+
+    @validator("version")
+    def check_version(cls, v: str) -> str:
+        """Validate that config version matches workflow major.minor version."""
+        # Parse config version
+        try:
+            config_parts = v.split(".")
+            if len(config_parts) < 2:
+                raise ValueError(
+                    f"Config version '{v}' must be in format 'major.minor' or 'major.minor.patch'"
+                )
+            config_major = int(config_parts[0])
+            config_minor = int(config_parts[1])
+        except (ValueError, IndexError) as e:
+            raise ValueError(
+                f"Config version '{v}' must be in format 'major.minor' or 'major.minor.patch'"
+            ) from e
+
+        # Parse workflow version
+        workflow_version = __version__.split("+")[0]  # Remove any build metadata
+        try:
+            workflow_parts = workflow_version.split(".")
+            if len(workflow_parts) < 2:
+                # Development version, skip validation
+                return v
+            workflow_major = int(workflow_parts[0])
+            workflow_minor = int(workflow_parts[1])
+        except (ValueError, IndexError):
+            # Can't parse workflow version, skip validation
+            return v
+
+        # Check major.minor match
+        if config_major != workflow_major or config_minor != workflow_minor:
+            raise ValueError(
+                f"Config version {config_major}.{config_minor} does not match "
+                f"workflow version {workflow_major}.{workflow_minor}. "
+                f"Please update your config file to use version {workflow_major}.{workflow_minor}.x"
+            )
+
         return v
 
     @property

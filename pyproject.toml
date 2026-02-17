@@ -1,15 +1,18 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
 [project]
 name = "descent-workflow"
-version = "0.1.0"
 description = "Workflow for descent force field optimization"
 requires-python = ">=3.10"
 dependencies = []
+dynamic = ["version"]
 
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+[tool.hatch.version]
+source = "vcs"
 
-[tool.setuptools]
+[tool.hatch.build.targets.wheel]
 packages = ["descent_workflow"]
 
 [tool.pixi.workspace]
@@ -20,6 +23,9 @@ platforms = ["linux-64"]
 cuda = "12"
 
 [tool.pixi.dependencies]
+# Package
+hatchling = "*"
+hatch-vcs = "*"
 python = ">=3.10"
 cuda-version = ">=12"
 pip = "*"
@@ -66,7 +72,6 @@ descent = { git = "https://github.com/fjclark/descent.git", branch = "feature-re
 yammbs = { git = "https://github.com/openforcefield/yammbs.git" }
 deepchem = "*"
 
-
 [tool.pixi.tasks]
 # Environment setup
 setup = "pre-commit install"
@@ -98,3 +103,4 @@ python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+exclude = ["descent_workflow/generate_types/"]

@@ -8,7 +8,12 @@ This package contains modules for:
 - Utilities (utils, convert_ff)
 """
 
+from importlib.metadata import version
+
+__version__ = version("descent-workflow")
+
 __all__ = [
+    "__version__",
     "benchmark",
     "convert_ff",
     "filter",

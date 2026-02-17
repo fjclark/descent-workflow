@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import loguru
-from models import WorkflowConfig
+from .models import WorkflowConfig
 
 # from yammbs.cached_result import CachedResultCollection,CachedResult
 from openff.qcsubmit.results import OptimizationResultCollection
@@ -22,7 +22,9 @@ SAGE22_INDUSTRY_BENCHMARK_JSON_URL = "https://raw.githubusercontent.com/openforc
 
 
 # From https://github.com/openforcefield/sage-2.2.1/blob/main/05_benchmark_forcefield/cache_dataset.py
-def split_dataset_batch_for_cache(dataset: Any, n: int = 1) -> list[OptimizationResultCollection]:
+def split_dataset_batch_for_cache(
+    dataset: Any, n: int = 1
+) -> list[OptimizationResultCollection]:
     ds = dict(dataset)["entries"]["https://api.qcarchive.molssi.org:443/"]
     n_keys = len(ds)
     group_size = int(n_keys / n) + 1
@@ -113,12 +115,16 @@ def get_sage_benchmarking_data(output_dir: str | Path) -> None:
 def run_yammbs_benchmarking(config: WorkflowConfig) -> None:
     """Run the yammbs benchmarking script with the given configuration."""
     # Get the absolute path to required scripts/ files
-    yammbs_benchmark_script_path = (Path(__file__).parent / "run_yammbs_script.py").absolute()
+    yammbs_benchmark_script_path = (
+        Path(__file__).parent / "run_yammbs_script.py"
+    ).absolute()
     ff_path = (Path(__file__).parent / config.output_ff_path).absolute()
     industry_benchmark_path = (
         Path(__file__).parent / "benchmarking" / "industry_benchmark"
     ).absolute()
-    cached_dataset_path = industry_benchmark_path / "input_data" / "filtered-industry-cached.json"
+    cached_dataset_path = (
+        industry_benchmark_path / "input_data" / "filtered-industry-cached.json"
+    )
 
     # Set up directories
     output_dir = industry_benchmark_path / "output" / config.experiment_name
@@ -146,7 +152,9 @@ def run_yammbs_benchmarking(config: WorkflowConfig) -> None:
     logger.info(f"Benchmark complete. Results saved to {output_dir}", flush=True)
 
     # Also run the benchmark with openff2.2.0
-    ff_path = (Path(__file__).parent / "output_ff/openff_unconstrained-2.2.0.offxml").absolute()
+    ff_path = (
+        Path(__file__).parent / "output_ff/openff_unconstrained-2.2.0.offxml"
+    ).absolute()
     output_dir = industry_benchmark_path / "output" / "openff2.2.0"
 
     if output_dir.exists():

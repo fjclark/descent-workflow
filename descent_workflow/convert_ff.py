@@ -6,7 +6,8 @@ from typing import Any
 
 import loguru
 import torch
-from models import WorkflowConfig
+
+from .models import WorkflowConfig
 from openff.toolkit import ForceField
 from openff.units import unit as off_unit
 from smee import TensorForceField
@@ -40,7 +41,9 @@ def pt_ff_to_off_ff(
                     setattr(ff_parameter, param_name, opt_parameters[j] * unit)
 
         if potential_type in ["LinearBonds", "LinearAngles", "LinearUreyBradleys"]:
-            handler = base_force_field.get_parameter_handler(potential_type.replace("Linear", ""))
+            handler = base_force_field.get_parameter_handler(
+                potential_type.replace("Linear", "")
+            )
             for i in range(len(potential.parameters)):
                 smirks = potential.parameter_keys[i].id
                 ff_parameter = handler[smirks]
@@ -70,7 +73,9 @@ def pt_ff_to_off_ff(
                         angle = -angle  # type: ignore[operator]
                     # Ensure the angle is within 0 to 360 degrees
                     elif angle > 360 * off_unit.degree:
-                        angle = angle - (angle // (360 * off_unit.degree)) * (360 * off_unit.degree)
+                        angle = angle - (angle // (360 * off_unit.degree)) * (
+                            360 * off_unit.degree
+                        )
                     # Reflect the angle about 180 degrees if it is greater than 180
                     if angle > 180 * off_unit.degree:
                         angle = 360 * off_unit.degree - angle
@@ -138,10 +143,14 @@ def pt_file_to_offxml(
     tensor_force_field_path: str | Path,
 ) -> None:
     """Convert the FF from pt to offxml format."""
-    logger.info(f"Converting {tensor_force_field_path} to OFF format with base {base_force_field}")
+    logger.info(
+        f"Converting {tensor_force_field_path} to OFF format with base {base_force_field}"
+    )
 
     tensor_ff = torch.load(tensor_force_field_path)
-    base_ff = ForceField(base_force_field, load_plugins=True, allow_cosmetic_attributes=True)
+    base_ff = ForceField(
+        base_force_field, load_plugins=True, allow_cosmetic_attributes=True
+    )
 
     ff = pt_ff_to_off_ff(base_ff, tensor_ff)
     ff.to_file(output)

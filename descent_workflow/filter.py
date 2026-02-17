@@ -18,9 +18,10 @@ import openff.toolkit
 import openff.units
 import torch
 import tqdm
-from get_data import ESPALOMA_SOURCES
 from loguru import logger
-from models import WorkflowConfig
+
+from .get_data import ESPALOMA_SOURCES
+from .models import WorkflowConfig
 from openff.toolkit import Molecule
 from rdkit import Chem
 from rdkit.Chem import rdMolAlign
@@ -34,7 +35,9 @@ def compute_best_rms(pairs: list[tuple[int, int]], mol: Chem.Mol) -> list[float]
     atom_map = [(i, i) for i in range(mol.GetNumAtoms())]
 
     return [
-        rdMolAlign.AlignMol(Chem.Mol(mol), Chem.Mol(mol), int(i), int(j), atomMap=atom_map)
+        rdMolAlign.AlignMol(
+            Chem.Mol(mol), Chem.Mol(mol), int(i), int(j), atomMap=atom_map
+        )
         for i, j in pairs
     ]
 
@@ -50,7 +53,9 @@ def cluster_confs(
         coords = entry["coords"].reshape(len(energy_ref), -1, 3).tolist()
         coords = [c * openff.units.unit.angstrom for c in coords]
 
-        mol_openff = openff.toolkit.Molecule.from_mapped_smiles(smiles, allow_undefined_stereo=True)
+        mol_openff = openff.toolkit.Molecule.from_mapped_smiles(
+            smiles, allow_undefined_stereo=True
+        )
         mol_openff._conformers = coords
 
         mol_rdkit: Chem.Mol = Chem.RemoveHs(mol_openff.to_rdkit())
@@ -58,11 +63,15 @@ def cluster_confs(
 
         conf_pairs = [(i, j) for i in range(len(conf_ids)) for j in range(i)]
 
-        conf_pairs_split: list[Any] = numpy.array_split(numpy.array(conf_pairs), N_WORKERS)
+        conf_pairs_split: list[Any] = numpy.array_split(
+            numpy.array(conf_pairs), N_WORKERS
+        )
 
         rms_fn = functools.partial(compute_best_rms, mol=mol_rdkit)
 
-        dists = list(tqdm.tqdm(pool.imap(rms_fn, conf_pairs_split), total=len(conf_pairs_split)))
+        dists = list(
+            tqdm.tqdm(pool.imap(rms_fn, conf_pairs_split), total=len(conf_pairs_split))
+        )
         dists = [d for dist in dists for d in dist]
 
         clusters = Butina.ClusterData(  # type: ignore[no-untyped-call]
@@ -87,7 +96,9 @@ def cluster_confs(
 
 def filter_and_cluster_espaloma(config: WorkflowConfig) -> None:
     for source in ESPALOMA_SOURCES:
-        dataset = datasets.Dataset.load_from_disk(f"{config.data_dir}/data-raw/{source}")
+        dataset = datasets.Dataset.load_from_disk(
+            f"{config.data_dir}/data-raw/{source}"
+        )
         unique_smiles = descent.targets.energy.extract_smiles(dataset)
 
         _, topologies = torch.load(config.torch_ffs_and_tops_path)
@@ -184,6 +195,8 @@ def filter_no_formal_charges_spice2(config: WorkflowConfig) -> None:
         dataset = dataset.filter(lambda d, t=topologies: d["smiles"] in t)
         logger.info(f"Removed non-parameterisable: {dataset_size} -> {len(dataset)}")
         dataset = dataset.filter(lambda d: not has_any_formal_charge(d["smiles"]))
-        logger.info(f"Removed molecules with formal charges: {dataset_size} -> {len(dataset)}")
+        logger.info(
+            f"Removed molecules with formal charges: {dataset_size} -> {len(dataset)}"
+        )
 
         dataset.save_to_disk(config.filtered_data_dir / source.name)
