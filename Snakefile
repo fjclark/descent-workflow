@@ -1,8 +1,6 @@
 """
-Some quirks of snakemake:
-
-Doesn't play nicely with pathlib.Path (converts to string)
-
+Snakefile to control the overall fitting workflow. Run with e.g.
+`snakemake --cores all train --configfile configs/initial_fit_espaloma_linearised_harmonics.yaml`
 """
 import importlib
 import os
@@ -24,14 +22,16 @@ from descent_workflow.train import train
 from descent_workflow.utils import get_fn
 
 # Load the configuration from a yaml file
-try:
-    workflow_config_path = config["workflow_config_path"]
-except KeyError:
+if workflow.configfiles:
+    if len(workflow.configfiles) > 1:
+        raise ValueError(f"Multiple config files provided: {workflow.configfiles}. Please provide only one config file.")
+    CONFIG_FILE = workflow.configfiles[0]
+else:
     raise ValueError("workflow_config_path not found in SnakeMake config."
                      " Please provide the path to the workflow configuration file with e.g."
-                     " `snakemake --cores all train --config workflow_config_path=configs/initial_fit_espaloma_linearised_harmonics.yaml`")
+                     " `snakemake --cores all train --configfile configs/initial_fit_espaloma_linearised_harmonics.yaml`")
 
-workflow_config = WorkflowConfig.from_file(workflow_config_path)
+workflow_config = WorkflowConfig.from_file(CONFIG_FILE)
 logger.info(f"Loaded workflow configuration {workflow_config}")
 
 
