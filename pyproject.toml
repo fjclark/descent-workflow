@@ -81,7 +81,13 @@ check = { depends-on = ["format", "lint", "type-check"] }
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["generate_new_types/create_angle_types_ring.ipynb"]
+extend-exclude = [
+    "generate_new_types/create_angle_types_ring.ipynb",
+    "input_ff",
+    "output_ff",
+    "configs",
+    "benchmarking",
+]
 
 [tool.ruff.lint]
 ignore = ["C901","E402","E501"]
