@@ -2,10 +2,11 @@
 
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
+from descent.train import AttributeConfig, ParameterConfig
 
 import yaml  # type: ignore[import-untyped]
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, model_validator
 
 __version__ = version("descent-workflow")
 
@@ -63,26 +64,45 @@ class WorkflowConfig(BaseModel):
         default="l1", description="Regularization for the torsion loss."
     )
 
-    attributes: dict[str, Any] = Field(
+    attributes: dict[str, AttributeConfig] = Field(
         default_factory=dict, description="Trainable attributes for the force field."
     )
 
-    parameters: dict[str, Any] = Field(
+    parameters: dict[str, ParameterConfig] = Field(
         default_factory=lambda: {
-            "LinearBonds": {
-                "cols": ["k1", "k2"],
-                "scales": {"k1": 0.0028, "k2": 0.028},
-                "limits": {"k1": [None, None], "k2": [None, None]},
-            },
-            "LinearAngles": {
-                "cols": ["k1", "k2"],
-                "scales": {"k1": 0.0115, "k2": 0.0115},
-                "limits": {"k1": [None, None], "k2": [None, None]},
-            },
-            "ProperTorsions": {"cols": ["k"], "scales": {"k": 8.72}},
-            "ImproperTorsions": {"cols": ["k"], "scales": {"k": 2.03}},
+            "LinearBonds": ParameterConfig(
+                cols=["k1", "k2"],
+                scales={"k1": 0.0028, "k2": 0.028},
+                limits={"k1": [None, None], "k2": [None, None]},
+            ),
+            "LinearAngles": ParameterConfig(
+                cols=["k1", "k2"],
+                scales={"k1": 0.0115, "k2": 0.0115},
+                limits={"k1": [None, None], "k2": [None, None]},
+            ),
+            "ProperTorsions": ParameterConfig(cols=["k"], scales={"k": 8.72}),
+            "ImproperTorsions": ParameterConfig(
+                cols=["k"],
+                scales={"k": 2.03},
+            ),
         },
         description="Trainable parameters for the force field.",
+    )
+    type_generation_protocol_name: Optional[str] = Field(
+        default=None,
+        description=(
+            "Name of the type generation protocol to use. Only required if type_generation_config is provided. "
+            "This is used to name the type generation output directory and checkpoints."
+        ),
+    )
+
+    type_generation_config: Optional[dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Configuration for bespoke type generation. If None, type generation "
+            "is skipped and the workflow uses the starting force field directly. "
+            "If provided, will be validated as a TypeGenConfig when used."
+        ),
     )
 
     model_config = {
@@ -101,6 +121,18 @@ class WorkflowConfig(BaseModel):
                 "If you have LinearAngles, you must also have LinearBonds."
             )
         return v
+
+    @model_validator(mode="after")
+    def check_type_generation_fields(self) -> "WorkflowConfig":
+        """Validate that type_generation_protocol_name and type_generation_config are both provided or both None."""
+        protocol_name = self.type_generation_protocol_name
+        config = self.type_generation_config
+
+        if (protocol_name is None) != (config is None):
+            raise ValueError(
+                "You must provide both type_generation_protocol_name and type_generation_config, or neither."
+            )
+        return self
 
     @validator("version")
     def check_version(cls, v: str) -> str:
@@ -188,6 +220,51 @@ class WorkflowConfig(BaseModel):
         """Whether to linearise the harmonic terms in the force field."""
         # We have validated to ensure that if we have LinearBonds, we also have LinearAngles
         return "LinearBonds" in self.parameters
+
+    @property
+    def type_gen_output_dir(self) -> Path:
+        """Directory for type generation outputs, checkpoints, and coverage reports."""
+        return (
+            self.data_dir
+            / f"type_generation_output_{self.input_ff_name}_{self.type_generation_protocol_name}"
+        )
+
+    @property
+    def bespoke_types_ff_path(self) -> Path:
+        """Path to the generated force field with bespoke types."""
+        return self.type_gen_output_dir / "bespoke_types.offxml"
+
+    @property
+    def type_gen_checkpoint_dir(self) -> Path:
+        """Directory for type generation checkpoints."""
+        return self.type_gen_output_dir / "checkpoints"
+
+    @property
+    def effective_ff_path(self) -> Path:
+        """
+        Path to the effective force field to use for parameterization.
+
+        Returns the bespoke types force field if type generation is enabled,
+        otherwise returns the starting force field path.
+        """
+        if self.type_generation_config is not None:
+            return self.bespoke_types_ff_path
+        return self.starting_force_field_path
+
+    @property
+    def final_torch_ffs_and_tops_path(self) -> Path:
+        """
+        Get the torch force field and topologies path to use for training.
+
+        Returns the re-parameterized force field with bespoke types if enabled,
+        otherwise returns the original parameterized force field.
+        """
+        if self.type_generation_config is not None:
+            # Re-parameterized with bespoke types
+            return self.type_gen_output_dir / "final_ff_and_tops.pt"
+        else:
+            # Original parameterization without bespoke types
+            return self.torch_ffs_and_tops_path
 
     @classmethod
     def from_file(cls, filename: str | Path) -> "WorkflowConfig":

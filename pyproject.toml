@@ -64,6 +64,9 @@ ruff = "*"
 mypy = "*"
 # New versions of torchdata require new versions of PyTorch which are not supported by DGL
 torchdata = "<=0.10.0"
+ipdb = ">=0.13.13,<0.14"
+panel = ">=1.8.7,<2"
+bokeh = ">=3.8.2,<4"
 
 [tool.pixi.pypi-dependencies]
 descent-workflow = { path = ".", editable = true }

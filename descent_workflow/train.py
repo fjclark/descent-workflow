@@ -98,6 +98,7 @@ def get_param_and_attr_configs(
     #         config.parameters["Angles"]["limits"]["angle"][-1] = math.pi
     # except KeyError:
     #     pass
+    breakpoint()
 
     parameters = {}
     for k, v in config.parameters.items():
@@ -309,9 +310,19 @@ def plot_loss(configs: list[WorkflowConfig], output_path: Path) -> None:
 
 def train(config: WorkflowConfig) -> None:
     """Use batching to fit to the SPICE dataset on a single GPU!"""
-    force_field, topologies = torch.load(config.torch_ffs_and_tops_path)
+    force_field, topologies = torch.load(config.final_torch_ffs_and_tops_path)
     dataset_train, dataset_test = get_datasets(config)
-    parameters, attributes = get_param_and_attr_configs(config)
+
+    # Filter out the test dataset to only include molecules present in the topologies
+    test_smiles = set(dataset_test["smiles"])
+    topology_smiles = set(topologies.keys())
+    filtered_test_smiles = test_smiles.intersection(topology_smiles)
+    dataset_test = dataset_test.filter(lambda x: x["smiles"] in filtered_test_smiles)
+    logger.info(
+        f"Filtered test dataset to {len(dataset_test)} entries based on available topologies."
+    )
+
+    parameters, attributes = config.parameters, config.attributes
     force_field = force_field.to("cuda")
     topologies = {
         smiles: topology.to("cuda") for smiles, topology in topologies.items()

@@ -162,8 +162,12 @@ def pt_file_to_offxml_with_description(config: WorkflowConfig) -> None:
     """Convert the FF from pt to offxml format with a description."""
     if not config.output_ff_dir.exists():
         config.output_ff_dir.mkdir(parents=True, exist_ok=True)
+    if config.type_generation_config is not None:
+        base_ff_path = config.bespoke_types_ff_path
+    else:
+        base_ff_path = config.starting_force_field_path
     pt_file_to_offxml(
-        base_force_field=config.starting_force_field_path,
+        base_force_field=base_ff_path,
         tensor_force_field_path=config.final_torch_ff_path,
         output=config.output_ff_path,
     )

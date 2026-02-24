@@ -8,17 +8,14 @@ from typing import Callable
 
 from loguru import logger
 
-from descent_workflow.benchmark import (
-    get_sage_benchmarking_data,
-    run_torsion_benchmark,
-    run_yammbs_benchmarking,
-)
-from descent_workflow.get_data import get_qca_torsion_data
+from descent_workflow.filter import filter_and_cluster_espaloma
+from descent_workflow.get_data import get_data_espaloma
 from descent_workflow.get_data_byte_dance import get_data_byte_dance
 from descent_workflow.models import WorkflowConfig
 from descent_workflow.parameterise import create_torch_ff_and_top
 from descent_workflow.train import train
 from descent_workflow.utils import get_fn
+from descent_workflow.generate_types import generate_bespoke_types, TypeGenConfig
 
 # Load the configuration from a yaml file
 if workflow.configfiles:
@@ -62,11 +59,84 @@ rule filter_and_cluster:
         filter_and_cluster_fn(workflow_config)
         workflow_config.to_file(workflow_config.filtered_data_dir / "workflow_config.yaml")
 
+rule generate_bespoke_types:
+    input:
+        workflow_config.filtered_data_dir,
+        workflow_config.starting_force_field_path
+    output:
+        workflow_config.bespoke_types_ff_path
+    run:
+        if workflow_config.type_generation_config is None:
+            logger.info("Type generation config is None, skipping bespoke type generation")
+            # Create a symlink or copy to satisfy Snakemake dependencies
+            from shutil import copy2
+            workflow_config.type_gen_output_dir.mkdir(parents=True, exist_ok=True)
+            copy2(workflow_config.starting_force_field_path, workflow_config.bespoke_types_ff_path)
+        else:
+            logger.info("Generating bespoke types from configuration")
+            # Parse dict into TypeGenConfig for validation
+            type_gen_config = TypeGenConfig(**workflow_config.type_generation_config)
+            
+            # Generate bespoke types
+            data_dir = workflow_config.filtered_data_dir / "data-train"
+            test_data_dir = workflow_config.filtered_data_dir / "data-test"
+            generate_bespoke_types(
+                config=type_gen_config,
+                base_ff_path=workflow_config.starting_force_field_path,
+                data_dir=data_dir,
+                output_dir=workflow_config.type_gen_output_dir,
+                test_data_dir=test_data_dir,
+            )
+            
+        workflow_config.to_file(workflow_config.type_gen_output_dir / "workflow_config.yaml")
+
+rule reparameterize_with_bespoke_types:
+    input:
+        workflow_config.filtered_data_dir,
+        workflow_config.bespoke_types_ff_path,
+        workflow_config.torch_ffs_and_tops_path
+    output:
+        workflow_config.final_torch_ffs_and_tops_path
+    run:
+        logger.info("Re-parameterizing filtered data with bespoke force field")
+        # Get SMILES from filtered dataset
+        import json
+        from datasets import Dataset
+        
+        filtered_train_data = Dataset.load_from_disk(str(workflow_config.filtered_data_dir / "data-train"))
+        filtered_test_data = Dataset.load_from_disk(str(workflow_config.filtered_data_dir / "data-test"))
+        
+        # Extract unique SMILES from filtered datasets
+        all_smiles = set(filtered_train_data["smiles"]) | set(filtered_test_data["smiles"])
+        unique_smiles_sorted = sorted(all_smiles)
+        
+        logger.info(f"Re-parameterizing {len(unique_smiles_sorted)} unique molecules with bespoke types")
+        
+        # Import the parameterize function
+        from descent_workflow.parameterise import apply_parameters
+        import torch
+        
+        # Re-parameterize with bespoke force field
+        force_field, topologies = apply_parameters(
+            unique_smiles_sorted,
+            str(workflow_config.effective_ff_path),
+            linearise_harm=workflow_config.linearise_harm,
+        )
+        
+        # Save the new torch force field and topologies
+        output_path = Path(output[0])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save((force_field, topologies), output_path)
+        
+        logger.info(f"Saved re-parameterized force field to {output_path}")
+
 rule train:
     input:
-        workflow_config.filtered_data_dir
+        workflow_config.filtered_data_dir,
+        workflow_config.final_torch_ffs_and_tops_path
     output:
-        protected(directory(workflow_config.fit_dir))
+        protected(directory(workflow_config.fit_dir)),
+        workflow_config.output_ff_path
     run:
         train(workflow_config)
         workflow_config.to_file(workflow_config.fit_dir / "workflow_config.yaml")
@@ -161,14 +231,31 @@ rule run_torsion_benchmark:
     params:
         sqlite_file="benchmarking/torsion_benchmarks/{benchmark}/output/torsion-data.sqlite",
         torsion_data_json="benchmarking/torsion_benchmarks/{benchmark}/input_data/qca-torsion-data.json",
-        output_dir="benchmarking/torsion_benchmarks/{benchmark}/output"
-    run:
-        run_torsion_benchmark(
-            config=workflow_config,
-            torsion_data_json=params.torsion_data_json,
-            sqlite_file=params.sqlite_file,
-            output_dir=params.output_dir,
-        )
+        output_dir="benchmarking/torsion_benchmarks/{benchmark}/output",
+        output_metrics="benchmarking/torsion_benchmarks/{benchmark}/output/metrics.json",
+        output_minimized="benchmarking/torsion_benchmarks/{benchmark}/output/minimized.json"
+    shell:
+        """
+        mkdir -p {params.output_dir}
+        yammbs_analyse_torsions \
+            --qcarchive-torsion-data {params.torsion_data_json} \
+            --database-file {params.sqlite_file} \
+            --output-metrics {params.output_metrics} \
+            --output-minimized {params.output_minimized} \
+            --plot-dir {params.output_dir} \
+            --base-force-fields openff-2.3.0 \
+            --extra-force-fields {workflow_config.output_ff_path} \
+            --method openmm_restrained
+        """
+
+
+    # run:
+    #     run_torsion_benchmark(
+    #         config=workflow_config,
+    #         torsion_data_json=params.torsion_data_json,
+    #         sqlite_file=params.sqlite_file,
+    #         output_dir=params.output_dir,
+    #     )
 
 rule all:
     input:

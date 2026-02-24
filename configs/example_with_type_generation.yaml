@@ -1,0 +1,145 @@
+# Example workflow configuration with bespoke type generation enabled
+# This demonstrates how to use the new type_generation_config feature
+
+version: "0.1.0"
+experiment_name: "spice2_with_bespoke_types"
+experiment_description: "SPICE2 training with automatically generated bespoke types"
+
+data_dir: "data/spice2"
+starting_force_field_path: "input_ff/sage-2.2.0.offxml"
+
+get_data_fn: "get_data.get_data_espaloma"
+filter_and_cluster_fn: "filter.filter_and_cluster_espaloma"
+
+# Training hyperparameters
+batch_size: 500
+minibatch_size: 256
+n_epochs: 1000
+learning_rate: 0.01
+
+energy_weight: 1.0
+force_weight: 1.0
+
+# Regularization
+torsion_weight: 0.0
+torsion_reg: "l1"
+
+# Force field features
+linearise_harm: true
+
+# Bespoke type generation configuration
+# Set to null or remove this section to skip type generation
+type_generation_config:
+  # Which component types to generate
+  component_types:
+    - "Bond"
+    - "Angle"
+    - "ProperTorsion"
+    - "ImproperTorsion"
+  
+  # Minimum number of instances required to create a type
+  cutoff_population: 10
+  
+  # Named specificity configurations for each component type
+  # Each level specifies how detailed SMIRKS patterns should be
+  # Keys are names (ordering determines specificity: earlier = less specific)
+  
+  # Bond specificity configurations
+  bond_specificities:
+    Standard:
+      atom_include_ring_info: false
+      bond_specificity: "STANDARD"
+  
+  # Angle specificity configurations
+  angle_specificities:
+    TerminalWildcard:  # Least specific: wildcards on terminal atom
+      atom_terminal_behavior: "WILDCARD"
+      bond_specificity: "NON_CENTRAL_WILDCARD"
+    TerminalHnoH:  # Mid-level: distinguish H from non-H on terminals
+      atom_terminal_behavior: "H_NO_H"
+      bond_specificity: "NON_CENTRAL_WILDCARD"
+    Standard:  # Most specific: explicit atoms everywhere
+      atom_include_ring_info: false
+      bond_specificity: "STANDARD"
+  
+  # Proper torsion specificity configurations
+  torsion_specificities:
+    TerminalWildcard:
+      atom_terminal_behavior: "WILDCARD"
+      bond_specificity: "NON_CENTRAL_WILDCARD"
+    TerminalHnoH:
+      atom_terminal_behavior: "H_NO_H"
+      bond_specificity: "NON_CENTRAL_WILDCARD"
+    Standard:
+      atom_include_ring_info: false
+      bond_specificity: "STANDARD"
+  
+  # Improper torsion specificity configurations
+  improper_specificities:
+    TerminalWildcard:
+      atom_terminal_behavior: "WILDCARD"
+      bond_specificity: "NON_CENTRAL_WILDCARD"
+    Standard:
+      atom_include_ring_info: false
+      bond_specificity: "STANDARD"
+  
+  # Optional: Paths to force fields with unwanted SMIRKS patterns to exclude
+  unwanted_smirks_paths:
+    ProperTorsion: "output_ff/linear_torsions.offxml"
+  
+  # Optional: Paths to force fields with extra parameters to include directly
+  # extra_parameters_paths:
+  #   Angle: "configs/extra_angle_params.offxml"
+
+# Define which parameters to train
+# Note: Since linearise_harm: true, we only specify LinearBonds/LinearAngles
+# If linearise_harm: false, you would specify Bonds/Angles instead
+parameters:
+  LinearBonds:
+    k1:
+      limits: [0.0, 2000.0]
+      regularization: 0.0
+    k2:
+      limits: [0.0, 2000.0]
+      regularization: 0.0
+    b1:
+      limits: [0.5, 3.0]
+      regularization: 0.0
+    b2:
+      limits: [0.5, 3.0]
+      regularization: 0.0
+  
+  LinearAngles:
+    k1:
+      limits: [0.0, 500.0]
+      regularization: 0.0
+    k2:
+      limits: [0.0, 500.0]
+      regularization: 0.0
+    angle1:
+      limits: [0.0, "pi"]
+      regularization: 0.0
+    angle2:
+      limits: [0.0, "pi"]
+      regularization: 0.0
+  
+  ProperTorsions:
+    k:
+      limits: [-10.0, 10.0]
+      regularization: 0.0
+  
+  ImproperTorsions:
+    k:
+      limits: [-10.0, 10.0]
+      regularization: 0.0
+
+# Define attributes to compute/track
+attributes:
+  LinearBonds:
+    - b1
+    - b2
+  LinearAngles:
+    - angle1
+    - angle2
+  ProperTorsions: []
+  ImproperTorsions: []

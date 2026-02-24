@@ -311,8 +311,10 @@ def apply_parameters(
 
     if linearise_harm:
         force_field = linearise_harmonics_force_field(force_field, device_type="cpu")
-        for topology in topologies:
-            topology = linearise_harmonics_topology(topology, device_type="cpu")
+        topologies = [
+            linearise_harmonics_topology(topology, device_type="cpu")
+            for topology in topologies
+        ]
 
     return force_field, dict(zip(unique_smiles_filtered, topologies, strict=True))
 

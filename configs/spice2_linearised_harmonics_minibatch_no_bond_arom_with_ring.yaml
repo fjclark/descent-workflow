@@ -1,0 +1,170 @@
+version: "0.1.0"
+experiment_name: spice2_linearised_harmonics_minibatch_no_bond_arom_with_ring
+experiment_description: Fit to SPICE 2 (filtered out larger forces) with linearised harmonics, with minibatching, and fully bespoke types with no bond or aromaticity information (but with ring information).
+data_dir: data/spice2
+get_data_fn: get_data.get_data_spice2_force_filtered
+get_data_output_smiles: data/spice2/smiles_test_train.json
+starting_force_field_path: input_ff/lj-sage-2-2-ashgc-msm-0-expanded-torsions.offxml
+filter_and_cluster_fn: descent_workflow.filter.filter_spice2
+batch_size: 600
+n_epochs: 30
+learning_rate: 0.02
+energy_weight: 1.0
+force_weight: 1.0
+torsion_weight: 0.0
+torsion_reg: l1
+minibatch_size: 256
+attributes: {}
+# Bespoke type generation configuration
+# Set to null or remove this section to skip type generation
+type_generation_protocol_name: "no_bond_no_arom_with_ring"
+type_generation_config:
+  # Which component types to generate
+  component_types:
+    - "Bond"
+    - "Angle"
+    - "ProperTorsion"
+    - "ImproperTorsion"
+  
+  # Minimum number of instances required to create a type
+  cutoff_population: 10
+
+  # Coverage SMILES paths
+  coverage_smiles_paths:
+    tnet_500: smiles_for_coverage/tnet_smiles.csv
+    industry_benchmark: smiles_for_coverage/industry_benchmark_smiles.csv
+  
+  # Named specificity configurations for each component type
+  # Each level specifies how detailed SMIRKS patterns should be
+  # Keys are names (ordering determines specificity: earlier = less specific)
+  
+  # Bond specificity configurations
+  # bond_specificities:
+  #   Standard:
+  #     atom_smirks: "STANDARD"
+  #     bond_smirks: "STANDARD"
+  
+  # # Angle specificity configurations
+  # angle_specificities:
+  #   TerminalWildcard:  # Least specific: wildcards on terminal atom
+  #     atom_smirks: "TERMINAL_WILDCARD"
+  #     bond_smirks: "NON_CENTRAL_WILDCARD"
+  #   TerminalHnoH:  # Mid-level: distinguish H from non-H on terminals
+  #     atom_smirks: "TERMINAL_H_NO_H"
+  #     bond_smirks: "NON_CENTRAL_WILDCARD"
+  #   Standard:  # Most specific: explicit atoms everywhere
+  #     atom_smirks: "STANDARD"
+  #     bond_smirks: "STANDARD"
+  
+  # # Proper torsion specificity configurations
+  # torsion_specificities:
+  #   TerminalWildcard:
+  #     atom_smirks: "TERMINAL_WILDCARD"
+  #     bond_smirks: "NON_CENTRAL_WILDCARD"
+  #   TerminalHnoH:
+  #     atom_smirks: "TERMINAL_H_NO_H"
+  #     bond_smirks: "NON_CENTRAL_WILDCARD"
+  #   Standard:
+  #     atom_smirks: "STANDARD"
+  #     bond_smirks: "STANDARD"
+  
+  # # Improper torsion specificity configurations
+  # improper_specificities:
+  #   # TerminalWildcard:
+  #   #   atom_smirks: "TERMINAL_WILDCARD"
+  #   #   bond_smirks: "NON_CENTRAL_WILDCARD"
+  #   Standard:
+  #     atom_smirks: "STANDARD"
+  #     bond_smirks: "STANDARD"
+  bond_specificities:
+    Standard:
+      atom_smirks: "WITH_RING_INFO"
+      bond_smirks: "WILDCARD"
+  
+  # Angle specificity configurations
+  angle_specificities:
+    Standard:  # Most specific: explicit atoms everywhere
+      atom_smirks: "WITH_RING_INFO"
+      bond_smirks: "WILDCARD"
+  
+  # Proper torsion specificity configurations
+  torsion_specificities:
+    # TerminalWildcard:
+    #   atom_smirks: "TERMINAL_WILDCARD"
+    #   bond_smirks: "NON_CENTRAL_WILDCARD"
+    # TerminalHnoH:
+    #   atom_smirks: "TERMINAL_H_NO_H"
+    #   bond_smirks: "NON_CENTRAL_WILDCARD"
+    Standard:
+      atom_smirks: "WITH_RING_INFO"
+      bond_smirks: "WILDCARD"
+  
+  # Improper torsion specificity configurations
+  improper_specificities:
+    # TerminalWildcard:
+    #   atom_smirks: "TERMINAL_WILDCARD"
+    #   bond_smirks: "NON_CENTRAL_WILDCARD"
+    Standard:
+      atom_smirks: "WITH_RING_INFO"
+      bond_smirks: "WILDCARD"
+  
+  # Optional: Paths to force fields with unwanted SMIRKS patterns to exclude
+  unwanted_smirks_paths:
+    ProperTorsion: "input_ff/linear_torsions.offxml"
+  
+  # Optional: Paths to force fields with extra parameters to include directly
+  extra_parameters_paths:
+    ProperTorsion: "input_ff/linear_torsions.offxml"
+
+parameters:
+  LinearBonds:
+    cols:
+    - k1
+    - k2
+    scales:
+      k1: 0.0028
+      k2: 0.0028
+    limits:
+      k1:
+      - 1E-8
+      - null
+      k2:
+      - 1E-8
+      - null
+  LinearAngles:
+    cols:
+    - k1
+    - k2
+    scales:
+      k1: 0.012
+      k2: 0.011
+    limits:
+      k1:
+      - 1E-8
+      - null
+      k2:
+      - 1E-8
+      - null
+  ProperTorsions:
+    cols:
+    - k
+    scales:
+      k: 1.3
+    exclude:
+    - id: '[*:1]-[*:2]#[*:3]-[*:4]'
+      mult: 0
+      associated_handler: ProperTorsions
+      bond_order: null
+    - id: '[*:1]~[*:2]-[*:3]#[*:4]'
+      mult: 0
+      associated_handler: ProperTorsions
+      bond_order: null
+    - id: '[*:1]~[*:2]=[#6,#7,#16,#15;X2:3]=[*:4]'
+      mult: 0
+      associated_handler: ProperTorsions
+      bond_order: null
+  ImproperTorsions:
+    cols:
+    - k
+    scales:
+      k: 0.12
