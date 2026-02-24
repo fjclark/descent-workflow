@@ -20,7 +20,6 @@ from tqdm import tqdm
 
 from .config import TypeGenConfig
 from .coverage import check_all_components_fully_covered_parallel_chunks
-from .molecular_classes import Bond, Angle, ProperTorsion, ImproperTorsion
 from .process_mmcomponents import (
     get_all_mm_components,
     get_mm_components_by_specificity_by_type,
@@ -131,9 +130,7 @@ def generate_bespoke_types(
         current_ff = ForceField(str(base_ff_path))
         logger.info(f"Loaded force field: {base_ff_path.name}")
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to load force field from {base_ff_path}: {e}"
-        ) from e
+        raise RuntimeError(f"Failed to load force field from {base_ff_path}: {e}") from e
 
     # Process each component type
     total_start_time = time.time()
@@ -168,9 +165,7 @@ def generate_bespoke_types(
             logger.info(f"Extracting {component_type_name} components from dataset")
             unwanted_smirks = config.get_unwanted_smirks(component_type_name)
             if unwanted_smirks:
-                logger.info(
-                    f"Will filter {len(unwanted_smirks)} unwanted SMIRKS patterns"
-                )
+                logger.info(f"Will filter {len(unwanted_smirks)} unwanted SMIRKS patterns")
 
             extraction_start = time.time()
             components = get_all_mm_components(
@@ -180,9 +175,7 @@ def generate_bespoke_types(
                 n_workers=config.n_workers,
             )
             extraction_time = time.time() - extraction_start
-            logger.info(
-                f"Extracted {len(components)} components in {extraction_time:.1f}s"
-            )
+            logger.info(f"Extracted {len(components)} components in {extraction_time:.1f}s")
 
             # Delete dataset immediately after extracting - don't keep in memory
             del dataset
@@ -207,9 +200,7 @@ def generate_bespoke_types(
                 n_workers=config.n_workers,
             )
             organization_time = time.time() - organization_start
-            logger.info(
-                f"Organized components by specificity in {organization_time:.1f}s"
-            )
+            logger.info(f"Organized components by specificity in {organization_time:.1f}s")
 
             # Delete components list and specificity_levels immediately
             del components, specificity_levels
@@ -356,9 +347,7 @@ def _log_component_statistics(components_by_specificity: dict) -> None:
         )
 
         # Show top 5 most common types
-        sorted_types = sorted(
-            components_by_type.items(), key=lambda x: len(x[1]), reverse=True
-        )
+        sorted_types = sorted(components_by_type.items(), key=lambda x: len(x[1]), reverse=True)
         logger.info("  Top 5 most common types:")
         for i, (smirks, comps) in enumerate(sorted_types[:5], 1):
             logger.info(f"    {i}. {smirks}: {len(comps)} instances")
@@ -367,14 +356,10 @@ def _log_component_statistics(components_by_specificity: dict) -> None:
     all_counts = flatten_mm_component_types(components_by_specificity)
     total_unique = len(all_counts)
     total_instances = sum(all_counts.values())
-    logger.info(
-        f"Overall: {total_unique} unique types, {total_instances} total instances"
-    )
+    logger.info(f"Overall: {total_unique} unique types, {total_instances} total instances")
 
 
-def _save_coverage_statistics(
-    components_by_specificity: dict, output_path: Path
-) -> None:
+def _save_coverage_statistics(components_by_specificity: dict, output_path: Path) -> None:
     """Save detailed coverage statistics to JSON file."""
     stats = {
         "by_specificity": {},
@@ -382,9 +367,7 @@ def _save_coverage_statistics(
     }
 
     for specificity_num, components_by_type in components_by_specificity.items():
-        type_counts = {
-            smirks: len(comps) for smirks, comps in components_by_type.items()
-        }
+        type_counts = {smirks: len(comps) for smirks, comps in components_by_type.items()}
         stats["by_specificity"][specificity_num] = {
             "n_unique_types": len(type_counts),
             "total_instances": sum(type_counts.values()),
@@ -398,9 +381,7 @@ def _save_coverage_statistics(
         "min_count": min(all_counts.values()) if all_counts else 0,
         "max_count": max(all_counts.values()) if all_counts else 0,
         "singleton_fraction": (
-            sum(1 for c in all_counts.values() if c == 1) / len(all_counts)
-            if all_counts
-            else 0
+            sum(1 for c in all_counts.values() if c == 1) / len(all_counts) if all_counts else 0
         ),
     }
 
@@ -469,7 +450,7 @@ def _check_coverage_is_error(
 
         # Count missing component types
         component_type_counts = {}
-        for smiles, missing_components in missing_coverage.items():
+        for _smiles, missing_components in missing_coverage.items():
             for component_type in missing_components.keys():
                 component_type_counts[component_type] = (
                     component_type_counts.get(component_type, 0) + 1
@@ -553,7 +534,7 @@ def _check_coverage_is_warning(
 
         # Count missing component types
         component_type_counts = {}
-        for smiles, missing_components in missing_coverage.items():
+        for _smiles, missing_components in missing_coverage.items():
             for component_type in missing_components.keys():
                 component_type_counts[component_type] = (
                     component_type_counts.get(component_type, 0) + 1
@@ -637,8 +618,7 @@ def _generate_coverage_summary(
     coverage_pct = 100 * (1 - n_missing / n_total) if n_total > 0 else 0
 
     logger.info(
-        f"Coverage: {n_total - n_missing}/{n_total} molecules "
-        f"({coverage_pct:.2f}%) fully covered"
+        f"Coverage: {n_total - n_missing}/{n_total} molecules ({coverage_pct:.2f}%) fully covered"
     )
 
     if n_missing > 0:
@@ -646,7 +626,7 @@ def _generate_coverage_summary(
 
         # Count missing component types
         component_type_counts = {}
-        for smiles, missing_components in missing_coverage.items():
+        for _smiles, missing_components in missing_coverage.items():
             for component_type in missing_components.keys():
                 component_type_counts[component_type] = (
                     component_type_counts.get(component_type, 0) + 1
@@ -715,7 +695,7 @@ def _load_smiles_from_file(smiles_path: Path) -> list[str]:
             raise ValueError(f"No valid SMILES found in {smiles_path}")
         return smiles_list
     except Exception as e:
-        raise ValueError(f"Failed to read CSV file {smiles_path}: {e}")
+        raise ValueError(f"Failed to read CSV file {smiles_path}: {e}") from e
 
 
 def _create_dataset_from_smiles(smiles_list: list[str]) -> Dataset:

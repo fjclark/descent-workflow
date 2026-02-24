@@ -197,23 +197,16 @@ class TypeGenConfig(BaseModel):
         for component_type in v:
             if component_type not in valid_types:
                 raise ValueError(
-                    f"Invalid component type '{component_type}'. "
-                    f"Must be one of: {valid_types}"
+                    f"Invalid component type '{component_type}'. Must be one of: {valid_types}"
                 )
         return v
 
-    @validator(
-        "unwanted_smirks_paths", "extra_parameters_paths", "coverage_smiles_paths"
-    )
-    def validate_paths_exist(
-        cls, v: dict[str, Optional[Path]]
-    ) -> dict[str, Optional[Path]]:
+    @validator("unwanted_smirks_paths", "extra_parameters_paths", "coverage_smiles_paths")
+    def validate_paths_exist(cls, v: dict[str, Optional[Path]]) -> dict[str, Optional[Path]]:
         """Validate that specified paths exist."""
         for component_type, path in v.items():
             if path is not None and not path.exists():
-                raise ValueError(
-                    f"Specified path for {component_type} does not exist: {path}"
-                )
+                raise ValueError(f"Specified path for {component_type} does not exist: {path}")
         return v
 
     def get_component_class(self, component_type: str) -> type[MMComponent]:
@@ -316,9 +309,7 @@ class TypeGenConfig(BaseModel):
         handler = ff.get_parameter_handler(handler_name)
         return list(handler.parameters)
 
-    def build_specificity_levels(
-        self, component_type: str
-    ) -> dict[int, SpecificityLevel]:
+    def build_specificity_levels(self, component_type: str) -> dict[int, SpecificityLevel]:
         """
         Build SpecificityLevel objects for a component type.
 

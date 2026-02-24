@@ -326,9 +326,7 @@ def get_atom_smirks_terminal_h_no_h_ring_info(
 
 
 @register_bond_smirks("STANDARD")
-def get_bond_smirks_standard(
-    atom_idxs: tuple[int, int], central_bond: bool, mol: Chem.Mol
-) -> str:
+def get_bond_smirks_standard(atom_idxs: tuple[int, int], central_bond: bool, mol: Chem.Mol) -> str:
     """
     Generate standard bond SMIRKS with explicit bond types.
 
@@ -405,9 +403,7 @@ def get_bond_smirks_non_central_wildcard(
 
 
 @register_bond_smirks("WILDCARD")
-def get_bond_smirks_wildcard(
-    atom_idxs: tuple[int, int], central_bond: bool, mol: Chem.Mol
-) -> str:
+def get_bond_smirks_wildcard(atom_idxs: tuple[int, int], central_bond: bool, mol: Chem.Mol) -> str:
     """
     Generate wildcard bond SMIRKS for all bonds.
 
@@ -486,9 +482,7 @@ def add_types_to_ff(
             desc=f"Adding params (spec {specificity_num})",
             unit="param",
         ):
-            parameter = component_class.get_parameter(
-                smirks, specificity_num, components, i, ff
-            )
+            parameter = component_class.get_parameter(smirks, specificity_num, components, i, ff)
             handler.parameters.append(parameter)
 
     # Add any extra parameters at the end

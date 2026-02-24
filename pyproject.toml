@@ -95,6 +95,7 @@ extend-exclude = [
     "output_ff",
     "configs",
     "benchmarking",
+    "*.offxml",
 ]
 
 [tool.ruff.lint]

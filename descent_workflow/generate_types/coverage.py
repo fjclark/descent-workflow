@@ -139,10 +139,7 @@ def check_molecules_fully_covered_chunk(smiles_chunk, ff):
     not be called directly. Use check_all_molecules_parameterisable_parallel_chunks
     instead.
     """
-    return [
-        (smiles, check_molecule_can_be_parameterised(smiles, ff))
-        for smiles in smiles_chunk
-    ]
+    return [(smiles, check_molecule_can_be_parameterised(smiles, ff)) for smiles in smiles_chunk]
 
 
 def chunked_iterable(iterable, chunk_size):
@@ -399,9 +396,7 @@ def check_torsions_fully_covered(
 
     top = Topology.from_molecules([mol])
     labels = ff.label_molecules(top)
-    torsion_params = labels[0][
-        "ProperTorsions"
-    ]  # list of (parameter, atom_indices) tuples
+    torsion_params = labels[0]["ProperTorsions"]  # list of (parameter, atom_indices) tuples
     covered_indices = list(torsion_params.keys())
 
     unassigned = []

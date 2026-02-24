@@ -71,9 +71,7 @@ from openff.toolkit.typing.engines.smirnoff.parameters import (
 
 SAGE_230 = ForceField("openff_unconstrained-2.3.0.offxml")
 
-SpecificityLevel = namedtuple(
-    "SpecificityLevel", ["name", "get_atom_smirks", "get_bond_smirks"]
-)
+SpecificityLevel = namedtuple("SpecificityLevel", ["name", "get_atom_smirks", "get_bond_smirks"])
 
 
 def get_bond_idxs(mol: Molecule) -> set[tuple[int, int]]:
@@ -101,10 +99,7 @@ def get_bond_idxs(mol: Molecule) -> set[tuple[int, int]]:
     """
     return cast(
         set[tuple[int, int]],
-        {
-            tuple(sorted((a.molecule_atom_index for a in bond.atoms)))
-            for bond in mol.bonds
-        },
+        {tuple(sorted((a.molecule_atom_index for a in bond.atoms))) for bond in mol.bonds},
     )
 
 
@@ -189,9 +184,7 @@ def get_improper_torsion_idxs(mol: Molecule) -> set[tuple[int, int, int, int]]:
     >>> impropers = get_improper_torsion_idxs(mol)
     """
     # For the moment, find the impropers assigned by sage2.3.0 and just use those.
-    return set(
-        SAGE_230.label_molecules(mol.to_topology())[0]["ImproperTorsions"].keys()
-    )
+    return set(SAGE_230.label_molecules(mol.to_topology())[0]["ImproperTorsions"].keys())
 
 
 class MMComponent(ABC):
@@ -263,9 +256,7 @@ class MMComponent(ABC):
     handler_class: type[ParameterHandler]  # Subclass must define handler class
     handler_version: float
     parameter_type: type[ParameterType]  # Subclass must define parameter type
-    getter_fn: Callable[
-        [Molecule], set[tuple[int, ...]]
-    ]  # Subclass must define getter function
+    getter_fn: Callable[[Molecule], set[tuple[int, ...]]]  # Subclass must define getter function
 
     def __init_subclass__(cls, **kwargs):
         """
@@ -365,15 +356,13 @@ class MMComponent(ABC):
             If the number of atoms or bonds is inconsistent with component type.
         """
         # Make sure that the lengths of atoms and bonds are consistent
-        assert (
-            len(atoms) == self.n_atoms
-        ), f"Expected {self.n_atoms} atoms, got {len(atoms)}"
-        assert (
-            len(bonds) == self.n_atoms - 1
-        ), f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
+        assert len(atoms) == self.n_atoms, f"Expected {self.n_atoms} atoms, got {len(atoms)}"
+        assert len(bonds) == self.n_atoms - 1, (
+            f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
+        )
 
         smirks = atoms[0]
-        for bond, atom in zip(bonds, atoms[1:]):
+        for bond, atom in zip(bonds, atoms[1:], strict=True):
             smirks += f"{bond}{atom}"
 
         return smirks
@@ -401,13 +390,13 @@ class MMComponent(ABC):
             specificity_level.get_atom_smirks(
                 at_idx, at_id, self.rdkit_mol, self.terminal_atom_indices
             )
-            for at_idx, at_id in zip(idxs, range(n))
+            for at_idx, at_id in zip(idxs, range(n), strict=True)
         ]
         atoms_bwd = [
             specificity_level.get_atom_smirks(
                 at_idx, at_id, self.rdkit_mol, self.terminal_atom_indices
             )
-            for at_idx, at_id in zip(reversed(idxs), range(n))
+            for at_idx, at_id in zip(reversed(idxs), range(n), strict=True)
         ]
 
         bonds_fwd = [
@@ -566,8 +555,7 @@ class Bond(MMComponent):
         mean_k = np.mean([p.k.m_as(k_unit) for p in base_ff_parameters]) * k_unit
         length_unit = off_unit.angstroms
         mean_length = (
-            np.mean([p.length.m_as(length_unit) for p in base_ff_parameters])
-            * length_unit
+            np.mean([p.length.m_as(length_unit) for p in base_ff_parameters]) * length_unit
         )
 
         parameter = BondHandler.BondType(
@@ -701,9 +689,7 @@ class Angle(MMComponent):
         k_unit = off_unit.kilocalorie_per_mole / off_unit.radians**2
         mean_k = np.mean([p.k.m_as(k_unit) for p in base_ff_parameters]) * k_unit
         angle_unit = off_unit.degrees
-        mean_angle = (
-            np.mean([p.angle.m_as(angle_unit) for p in base_ff_parameters]) * angle_unit
-        )
+        mean_angle = np.mean([p.angle.m_as(angle_unit) for p in base_ff_parameters]) * angle_unit
 
         parameter = AngleHandler.AngleType(
             smirks=smirks,
@@ -843,8 +829,7 @@ class ProperTorsion(MMComponent):
         # assert all(isinstance(c, ProperTorsion) for c in components), "All components must be ProperTorsion instances"
         parameter = ProperTorsionHandler.ProperTorsionType(
             smirks=smirks,
-            k=[0 * off_unit.kilocalorie_per_mole / off_unit.radian**2]
-            * 4,  # Default K values
+            k=[0 * off_unit.kilocalorie_per_mole / off_unit.radian**2] * 4,  # Default K values
             phase=[0 * off_unit.degrees] * 4,  # Default phase values
             periodicity=[1, 2, 3, 4],  # Default periodicities
             idivf=[1.0] * 4,  # Default idivf values
@@ -922,16 +907,12 @@ class ImproperTorsion(MMComponent):
             If the number of atoms or bonds is incorrect.
         """
         # Make sure that the lengths of atoms and bonds are consistent
-        assert (
-            len(atoms) == self.n_atoms
-        ), f"Expected {self.n_atoms} atoms, got {len(atoms)}"
-        assert (
-            len(bonds) == self.n_atoms - 1
-        ), f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
-
-        return (
-            f"{atoms[0]}{bonds[0]}{atoms[1]}({bonds[1]}{atoms[2]}){bonds[2]}{atoms[3]}"
+        assert len(atoms) == self.n_atoms, f"Expected {self.n_atoms} atoms, got {len(atoms)}"
+        assert len(bonds) == self.n_atoms - 1, (
+            f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
         )
+
+        return f"{atoms[0]}{bonds[0]}{atoms[1]}({bonds[1]}{atoms[2]}){bonds[2]}{atoms[3]}"
 
     def get_smirks(self, specificity_level: SpecificityLevel) -> str:
         """
@@ -957,7 +938,7 @@ class ImproperTorsion(MMComponent):
             specificity_level.get_atom_smirks(
                 at_idx, at_id, self.rdkit_mol, self.terminal_atom_indices
             )
-            for at_idx, at_id in zip(idxs, range(n))
+            for at_idx, at_id in zip(idxs, range(n), strict=True)
         ]
 
         # Third atom is always central
@@ -1006,9 +987,7 @@ class ImproperTorsion(MMComponent):
         # assert all(isinstance(c, ImproperTorsion) for c in components), "All components must be ImproperTorsion instances"
         parameter = ImproperTorsionHandler.ImproperTorsionType(
             smirks=smirks,
-            k=[
-                0 * off_unit.kilocalorie_per_mole / off_unit.radian**2
-            ],  # Default K value
+            k=[0 * off_unit.kilocalorie_per_mole / off_unit.radian**2],  # Default K value
             phase=[180 * off_unit.degrees],  # Default phase value
             periodicity=[2],  # Default periodicity
             idivf=[1.0],  # Default idivf value

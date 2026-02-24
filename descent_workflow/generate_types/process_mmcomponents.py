@@ -221,9 +221,7 @@ def _process_dataset_row(row, component_type, unwanted_smirks):
         return components, len(components), len(components)
 
     filtered_components = [
-        x
-        for x in components
-        if not is_unwanted_smirks(x, unwanted_smirks=unwanted_smirks)
+        x for x in components if not is_unwanted_smirks(x, unwanted_smirks=unwanted_smirks)
     ]
     return filtered_components, len(components), len(filtered_components)
 
@@ -524,9 +522,7 @@ def get_mm_components_by_specificity_by_type(
         if i < len(specificity_order) - 1:
             # Find component types below cutoff using simple list comprehension
             # (much more memory-efficient than parallel processing for simple filtering)
-            logger.info(
-                f"Extracting components below cutoff_population ({cutoff_population})"
-            )
+            logger.info(f"Extracting components below cutoff_population ({cutoff_population})")
             too_specific = [
                 component
                 for component_list in tqdm(
@@ -577,9 +573,7 @@ def get_mm_component_type_num(
     >>> get_mm_component_type_num(components)
     {"[#6:1]-[#6:2]": 3}
     """
-    return {
-        smirks: len(components) for smirks, components in components_by_type.items()
-    }
+    return {smirks: len(components) for smirks, components in components_by_type.items()}
 
 
 def flatten_mm_component_types(
