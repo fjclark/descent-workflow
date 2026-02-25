@@ -51,6 +51,13 @@ class TypeGenConfig(BaseModel):
     cutoff_population : int
         Minimum number of component instances required to maintain a specific
         SMIRKS pattern. Patterns below this threshold are generalized.
+    enable_outer_sphere : bool
+        Whether to include atoms bonded to core atoms in SMIRKS patterns. When True,
+        SMIRKS will include outer-sphere atoms up to max_outer_sphere_distance bonds
+        away. Default is False for backward compatibility.
+    max_outer_sphere_distance : int
+        Maximum distance (in bonds) from core atoms to include in outer-sphere SMIRKS.
+        Must be 1 or 2. Only used if enable_outer_sphere is True. Default is 1.
     unwanted_smirks_paths : dict[str, Optional[Path]]
         Paths to force field files containing SMIRKS patterns to exclude.
         Keys are component type names (e.g., "ProperTorsion").
@@ -75,6 +82,15 @@ class TypeGenConfig(BaseModel):
         - NON_CENTRAL_WILDCARD: ~ for non-central, explicit for central
         - WILDCARD: ~ for all bonds
 
+    Per-level outer-sphere control:
+        Each specificity level entry may include an optional ``outer_sphere_distance``
+        key (integer 1 or 2, or omitted / null for none). When set, outer-sphere atoms
+        up to that shell are appended as unindexed branches to core atom tokens,
+        e.g. ``[#6X4:1](-;!@[#1X1])-[#6X4:2]``. Any atom/bond SMIRKS function can
+        be paired with ``outer_sphere_distance`` — no special function is needed.
+        The global ``max_outer_sphere_distance`` on this config controls the extraction
+        depth and must be >= the maximum ``outer_sphere_distance`` used across all levels.
+
     Examples
     --------
     >>> config = TypeGenConfig(
@@ -98,7 +114,7 @@ class TypeGenConfig(BaseModel):
         description="Component types to generate SMIRKS patterns for.",
     )
 
-    bond_specificities: dict[str, dict[str, str]] = Field(
+    bond_specificities: dict[str, dict[str, str | int | None]] = Field(
         default_factory=lambda: {
             "Standard": {
                 "atom_smirks": "STANDARD",
@@ -108,7 +124,7 @@ class TypeGenConfig(BaseModel):
         description="Bond SMIRKS configurations by specificity level name.",
     )
 
-    angle_specificities: dict[str, dict[str, str]] = Field(
+    angle_specificities: dict[str, dict[str, str | int | None]] = Field(
         default_factory=lambda: {
             "TerminalWildcard": {
                 "atom_smirks": "TERMINAL_WILDCARD",
@@ -126,7 +142,7 @@ class TypeGenConfig(BaseModel):
         description="Angle SMIRKS configurations by specificity level name.",
     )
 
-    torsion_specificities: dict[str, dict[str, str]] = Field(
+    torsion_specificities: dict[str, dict[str, str | int | None]] = Field(
         default_factory=lambda: {
             "TerminalWildcard": {
                 "atom_smirks": "TERMINAL_WILDCARD",
@@ -144,7 +160,7 @@ class TypeGenConfig(BaseModel):
         description="Proper torsion SMIRKS configurations by specificity level name.",
     )
 
-    improper_specificities: dict[str, dict[str, str]] = Field(
+    improper_specificities: dict[str, dict[str, str | int | None]] = Field(
         default_factory=lambda: {
             "TerminalWildcard": {
                 "atom_smirks": "TERMINAL_WILDCARD",
@@ -166,6 +182,18 @@ class TypeGenConfig(BaseModel):
         default=10,
         ge=1,
         description="Minimum component count to maintain specificity level.",
+    )
+
+    enable_outer_sphere: bool = Field(
+        default=False,
+        description="Whether to include atoms bonded to core atoms in SMIRKS patterns.",
+    )
+
+    max_outer_sphere_distance: int = Field(
+        default=1,
+        ge=1,
+        le=2,
+        description="Maximum distance (in bonds) from core atoms to include in outer-sphere SMIRKS. Must be 1 or 2.",
     )
 
     unwanted_smirks_paths: dict[str, Optional[Path]] = Field(
@@ -313,8 +341,8 @@ class TypeGenConfig(BaseModel):
         """
         Build SpecificityLevel objects for a component type.
 
-        This directly maps config SMIRKS function names to the actual functions,
-        using the decorator-based registries from process_SMIRKS.
+        Reads atom/bond SMIRKS function names from the config registries, as well
+        as the optional ``outer_sphere_distance`` key for each level.
 
         Parameters
         ----------
@@ -334,11 +362,20 @@ class TypeGenConfig(BaseModel):
         for i, (name, config) in enumerate(specificity_config.items()):
             atom_fn = process_SMIRKS.atom_fn_map[config["atom_smirks"]]
             bond_fn = process_SMIRKS.bond_fn_map[config["bond_smirks"]]
+            outer_sphere_distance: int | None = config.get("outer_sphere_distance", None)
+
+            outer_atom_name = str(config.get("outer_atom_smirks", "WITH_RING_INFO"))
+            outer_bond_name = str(config.get("outer_bond_smirks", "WITH_RING_INFO"))
+            outer_atom_fn = process_SMIRKS.outer_atom_fn_map[outer_atom_name]
+            outer_bond_fn = process_SMIRKS.outer_bond_fn_map[outer_bond_name]
 
             specificity_levels[i] = SpecificityLevel(
                 name=f"{i}:{name}",
                 get_atom_smirks=atom_fn,
                 get_bond_smirks=bond_fn,
+                outer_sphere_distance=outer_sphere_distance,
+                get_outer_atom_smirks=outer_atom_fn,
+                get_outer_bond_smirks=outer_bond_fn,
             )
 
         return specificity_levels

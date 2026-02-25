@@ -69,12 +69,15 @@ from rdkit.Geometry import Point3D
 from openff.toolkit import Molecule
 
 from .molecular_classes import MMComponent, SpecificityLevel
+from .outer_sphere import build_outer_sphere_indices
 
 
 def get_mm_components_from_huggingface(
     ds_row: dict,
     component_type: type[MMComponent],
     load_coords: bool = False,
+    enable_outer_sphere: bool = False,
+    max_outer_sphere_distance: int = 1,
 ) -> list[MMComponent]:
     """
     Extract molecular mechanics components from HuggingFace dataset row.
@@ -90,6 +93,12 @@ def get_mm_components_from_huggingface(
         Component class (Bond, Angle, ProperTorsion, ImproperTorsion).
     load_coords : bool, optional
         If true and input has coordinates, the conformer is created in the RDKit molecule
+    enable_outer_sphere : bool, optional
+        If true, include atoms bonded to core atoms in outer_sphere_indices.
+        Default is False.
+    max_outer_sphere_distance : int, optional
+        Maximum distance (in bonds) from core atoms to include in outer_sphere_indices.
+        Only used if enable_outer_sphere is True. Default is 1.
 
     Returns
     -------
@@ -119,11 +128,15 @@ def get_mm_components_from_huggingface(
     >>> bonds[0].rdkit_mol.GetNumConformers()
     2
 
-    >>> # Extract angles from a molecule
+    >>> # Extract angles with outer-sphere atoms
     >>> from molecular_classes import Angle
-    >>> angles = get_mm_components_from_huggingface(row, Angle)
+    >>> angles = get_mm_components_from_huggingface(
+    ...     row, Angle, enable_outer_sphere=True, max_outer_sphere_distance=1
+    ... )
     >>> len(angles)
     1
+    >>> if angles[0].outer_sphere_indices:
+    ...     print(f"Outer atoms at distance 1: {angles[0].outer_sphere_indices.get_atoms_at_distance(1)}")
     """
     mol = Molecule.from_mapped_smiles(ds_row["smiles"], allow_undefined_stereo=True)
     if mol is None:
@@ -157,6 +170,11 @@ def get_mm_components_from_huggingface(
             indices=idxs,
             mol=mol,
             rdkit_mol=rdkit_mol,
+            outer_sphere_indices=(
+                build_outer_sphere_indices(idxs, mol, max_outer_sphere_distance)
+                if enable_outer_sphere
+                else None
+            ),
         )
         for idxs in component_type.getter_fn(mol)
     ]
@@ -193,7 +211,13 @@ def is_unwanted_smirks(component: MMComponent, unwanted_smirks: list[str]) -> bo
     return any(component.matches_smirks(smirks) for smirks in unwanted_smirks)
 
 
-def _process_dataset_row(row, component_type, unwanted_smirks):
+def _process_dataset_row(
+    row,
+    component_type,
+    unwanted_smirks,
+    enable_outer_sphere=False,
+    max_outer_sphere_distance=1,
+):
     """
     Process a single dataset row to extract and filter components.
 
@@ -207,6 +231,10 @@ def _process_dataset_row(row, component_type, unwanted_smirks):
         Component class to extract.
     unwanted_smirks : list[str] | None
         SMIRKS patterns to exclude.
+    enable_outer_sphere : bool, optional
+        If true, include outer-sphere atoms. Default is False.
+    max_outer_sphere_distance : int, optional
+        Maximum distance  for outer-sphere atoms. Default is 1.
 
     Returns
     -------
@@ -216,7 +244,12 @@ def _process_dataset_row(row, component_type, unwanted_smirks):
         - n_total: Total components extracted before filtering
         - n_filtered: Number of components after filtering
     """
-    components = get_mm_components_from_huggingface(row, component_type)
+    components = get_mm_components_from_huggingface(
+        row,
+        component_type,
+        enable_outer_sphere=enable_outer_sphere,
+        max_outer_sphere_distance=max_outer_sphere_distance,
+    )
     if unwanted_smirks is None or len(unwanted_smirks) == 0:
         return components, len(components), len(components)
 
@@ -231,6 +264,8 @@ def get_all_mm_components(
     component_type: type[MMComponent],
     unwanted_smirks: list[str] | None = None,
     n_workers: int | None = None,
+    enable_outer_sphere: bool = False,
+    max_outer_sphere_distance: int = 1,
 ) -> list[MMComponent]:
     """
     Extract components from HuggingFace dataset with filtering using parallel processing.
@@ -245,6 +280,12 @@ def get_all_mm_components(
         SMIRKS patterns to exclude from results.
     n_workers : int, optional
         Number of worker processes. If None, uses all available CPU cores.
+    enable_outer_sphere : bool, optional
+        If true, include atoms bonded to core atoms in outer_sphere_indices.
+        Default is False for backward compatibility.
+    max_outer_sphere_distance : int, optional
+        Maximum distance (in bonds) from core atoms to include in outer_sphere_indices.
+        Only used if enable_outer_sphere is True. Default is 1.
 
     Returns
     -------
@@ -267,12 +308,19 @@ def get_all_mm_components(
     >>> filtered_bonds = get_all_mm_components(dataset, Bond, unwanted_smirks=unwanted)
     >>> print(f"Filtered bonds: {len(filtered_bonds)}")
     Filtered bonds: 3
+
+    >>> # Extract with outer-sphere atoms
+    >>> bonds_with_outer = get_all_mm_components(
+    ...     dataset, Bond, enable_outer_sphere=True, max_outer_sphere_distance=1
+    ... )
     """
     if n_workers is None:
         n_workers = os.cpu_count()
     n_workers = n_workers or 1
     logger.info(f"Unwanted SMIRKS to filter: {unwanted_smirks}")
     logger.info(f"Using {n_workers} workers for parallel processing")
+    if enable_outer_sphere:
+        logger.info(f"Outer-sphere atoms enabled: max_distance={max_outer_sphere_distance}")
 
     all_components = []
     n_components, n_filtered = 0, 0
@@ -282,6 +330,8 @@ def get_all_mm_components(
         _process_dataset_row,
         component_type=component_type,
         unwanted_smirks=unwanted_smirks,
+        enable_outer_sphere=enable_outer_sphere,
+        max_outer_sphere_distance=max_outer_sphere_distance,
     )
 
     logger.info(f"Processing {lx} molecules from HuggingFace Dataset")

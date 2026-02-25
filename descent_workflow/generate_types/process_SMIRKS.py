@@ -11,6 +11,33 @@ Functions are registered using decorators to create two registries:
 
 These registries are used by the configuration system to look up functions by name.
 
+Shell-Based Detail Control for Outer-Sphere Atoms
+--------------------------------------------------
+When outer-sphere atoms are included in SMIRKS patterns, their level of detail
+is controlled automatically based on their distance from core atoms using shell
+indicators (enum classes). Both atoms and bonds use the same hierarchical numbering:
+
+AtomShell (hierarchical levels):
+- CORE_CENTRAL (-1): Central atom in 4-atom terms
+- CORE_TERMINAL (0): Terminal atoms in components
+- OUTER_1 (1): First-shell outer atoms (distance 1) - Full detail (element, degree, ring info)
+- OUTER_2 (2): Second-shell outer atoms (distance 2) - Reduced detail (element only)
+
+BondShell (hierarchical levels):
+- CORE_CENTRAL (-1): Central bond in 4-atom terms
+- CORE (0): Bonds between core atoms
+- OUTER_1 (1): Bonds to first-shell atoms - Full detail (bond type + ring info)
+- OUTER_2 (2): Bonds to second-shell atoms - Minimal detail (bond type only)
+
+Example SMIRKS with varying outer-sphere detail:
+    [#6X4:1(-;!@[#1X1;!r3;!r4;!r5;!r6;!r7;!r8])(-[#1])]-[#6X4:2]
+           └─────────────────────────────────────┘ └──────┘
+           Distance-1 (OUTER_1): Full detail      Distance-2 (OUTER_2): Element only
+
+This hierarchical detail control allows specificity levels to naturally
+fall back to less detailed patterns when rare SMIRKS patterns are demoted
+during the hierarchical organization phase.
+
 Functions
 ---------
 get_atom_descriptors
@@ -35,11 +62,31 @@ get_bond_smirks_non_central_wildcard
     Wildcard non-central bonds
 get_bond_smirks_wildcard
     All bonds as wildcards
+
+Outer-sphere atom functions (outer_atom_fn_map)
+    Applied to unindexed neighbour atoms. Signature: (at_idx, mol, shell).
+    - STANDARD: [#NXM] — element + degree
+    - WITH_RING_INFO: [#NXM;rK] — element + degree + ring (default)
+    - WILDCARD: [*]
+    - H_NO_H: [#1] or [!#1]
+
+Outer-sphere bond functions (outer_bond_fn_map)
+    Applied to bonds connecting core atoms to neighbours. Signature: (outer_idx, core_idx, mol, shell).
+    - STANDARD: explicit bond type (-, =, #, :)
+    - WITH_RING_INFO: bond type + ring info (default)
+    - WILDCARD: ~
+
 add_types_to_ff
     Integrate component parameters into OpenFF force fields.
+
+Outer-sphere expansion
+    Controlled entirely by ``outer_sphere_distance`` on :class:`~.molecular_classes.SpecificityLevel`.
+    Any atom/bond SMIRKS function can be combined with a non-None ``outer_sphere_distance``
+    to include first- or second-shell neighbour atoms in the pattern.
 """
 
 from copy import deepcopy
+from enum import IntEnum
 from typing import Callable
 from rdkit import Chem
 from tqdm import tqdm
@@ -51,9 +98,51 @@ from openff.toolkit.typing.engines.smirnoff.parameters import ParameterType
 from .molecular_classes import MMComponent
 
 
-# Registry for SMIRKS generation functions
+# Shell indicators for controlling specificity of outer-sphere atoms
+# Atoms and bonds are controlled separately for flexibility
+
+
+class AtomShell(IntEnum):
+    """Shell level indicators for atoms in components.
+
+    Hierarchical position of atoms from innermost to outermost:
+    - CORE_CENTRAL (-1): Central atom in 4-atom terms (torsion/improper index 1)
+    - CORE_TERMINAL (0): Terminal atoms (end atoms in bonds/angles, terminal in torsions)
+    - OUTER_1 (1): First-shell outer atoms (distance 1 from core)
+    - OUTER_2 (2): Second-shell outer atoms (distance 2 from core)
+    """
+
+    CORE_CENTRAL = -1
+    CORE_TERMINAL = 0
+    OUTER_1 = 1
+    OUTER_2 = 2
+
+
+class BondShell(IntEnum):
+    """Shell level indicators for bonds in components.
+
+    Hierarchical position of bonds from innermost to outermost:
+    - CORE_CENTRAL (-1): Central bond in 4-atom terms (torsion/improper)
+    - CORE (0): Bonds between core atoms
+    - OUTER_1 (1): Bonds connecting core to first-shell outer atoms
+    - OUTER_2 (2): Bonds connecting core to second-shell outer atoms
+    """
+
+    CORE_CENTRAL = -1
+    CORE = 0
+    OUTER_1 = 1
+    OUTER_2 = 2
+
+
+# Registry for core SMIRKS generation functions
 atom_fn_map: dict[str, Callable] = {}
 bond_fn_map: dict[str, Callable] = {}
+
+# Registry for outer-sphere SMIRKS generation functions
+# Outer atom fn signature: (at_idx: int, mol: Chem.Mol, shell: AtomShell) -> str
+# Outer bond fn signature: (outer_idx: int, core_idx: int, mol: Chem.Mol, shell: BondShell) -> str
+outer_atom_fn_map: dict[str, Callable] = {}
+outer_bond_fn_map: dict[str, Callable] = {}
 
 
 def register_atom_smirks(name: str) -> Callable:
@@ -155,6 +244,191 @@ def get_bond_descriptors(atom_idxs: tuple[int, int], mol: Chem.Mol) -> dict[str,
     ring_smarts = ";@" if bond.IsInRing() else ";!@"
 
     return {"bond_smarts": bond_smarts, "ring_smarts": ring_smarts}
+
+
+def get_outer_atom_smirks(
+    at_idx: int,
+    mol: Chem.Mol,
+    include_ring_info: bool = True,
+    shell: AtomShell = AtomShell.OUTER_1,
+) -> str:
+    """
+    Generate SMIRKS pattern for an outer-sphere atom (unindexed).
+
+    Outer-sphere atoms are atoms bonded to core atoms but are not themselves
+    labeled in the SMIRKS pattern. They are used to provide chemical context.
+    Detail level is controlled by the shell parameter.
+
+    Parameters
+    ----------
+    at_idx : int
+        Atom index in molecule.
+    mol : rdkit.Chem.Mol
+        RDKit molecule object.
+    include_ring_info : bool, optional
+        If True, include ring information. Default True. Ignored for AtomShell.OUTER_2
+        atoms when detail is low.
+    shell : AtomShell, optional
+        Shell indicator controlling detail level:
+        - AtomShell.OUTER_1: Full detail (element, degree, ring info)
+        - AtomShell.OUTER_2: Reduced detail (just element and degree, no ring)
+        Default AtomShell.OUTER_1.
+
+    Returns
+    -------
+    str
+        SMIRKS pattern for outer atom (unindexed), e.g., "[#6X4]" or "[#6X4;r6]"
+    """
+    ds = get_atom_descriptors(at_idx, mol)
+
+    # Control detail based on shell
+    if shell == AtomShell.OUTER_2:
+        # Second shell: minimal detail
+        pattern = f"[{ds['atomic_num']}]"
+    elif shell == AtomShell.OUTER_1 and include_ring_info:
+        # First shell with ring info
+        pattern = f"[{ds['atomic_num']}{ds['degree']}{ds['ring_size']}]"
+    else:
+        # First shell without ring info, or default
+        pattern = f"[{ds['atomic_num']}{ds['degree']}]"
+
+    return pattern
+
+
+def get_outer_bond_smirks_to_core(
+    outer_idx: int,
+    core_idx: int,
+    mol: Chem.Mol,
+    include_ring_info: bool = True,
+    shell: BondShell = BondShell.OUTER_1,
+) -> str:
+    """
+    Generate bond SMIRKS for bond between outer-sphere and core atom (unindexed).
+
+    Detail level is controlled by the shell parameter to allow different levels
+    of specificity for bonds at different distances from the core.
+
+    Parameters
+    ----------
+    outer_idx : int
+        Index of outer-sphere atom.
+    core_idx : int
+        Index of core atom.
+    mol : rdkit.Chem.Mol
+        RDKit molecule object.
+    include_ring_info : bool, optional
+        If True, include ring information when appropriate. Default True.
+        Ignored for BondShell.OUTER_2 atoms.
+    shell : BondShell, optional
+        Shell indicator controlling detail level:
+        - BondShell.OUTER_1: Full detail (bond type + ring info if include_ring_info)
+        - BondShell.OUTER_2: Minimal detail (just bond type, no ring info)
+        Default BondShell.OUTER_1.
+
+    Returns
+    -------
+    str
+        Bond SMIRKS pattern (unindexed), e.g., "-" or "=" or "-;@"
+    """
+    bond = mol.GetBondBetweenAtoms(outer_idx, core_idx)
+    if bond is None:
+        raise ValueError(f"No bond found between atoms {outer_idx} and {core_idx}")
+
+    TYPE_TO_SMARTS = {
+        Chem.BondType.SINGLE: "-",
+        Chem.BondType.DOUBLE: "=",
+        Chem.BondType.TRIPLE: "#",
+        Chem.BondType.AROMATIC: ":",
+    }
+
+    bond_smarts = TYPE_TO_SMARTS.get(bond.GetBondType(), "~")
+
+    # Control detail based on shell
+    if shell == BondShell.OUTER_2 or not include_ring_info:
+        # Second shell or minimal detail: just bond type
+        return bond_smarts
+    else:
+        # First shell with ring info
+        ring_smarts = ";@" if bond.IsInRing() else ";!@"
+        return bond_smarts + ring_smarts
+
+
+def _register_outer_atom_smirks(name: str) -> Callable:
+    def decorator(func: Callable) -> Callable:
+        outer_atom_fn_map[name] = func
+        return func
+
+    return decorator
+
+
+def _register_outer_bond_smirks(name: str) -> Callable:
+    def decorator(func: Callable) -> Callable:
+        outer_bond_fn_map[name] = func
+        return func
+
+    return decorator
+
+
+# ── Outer-sphere atom functions ───────────────────────────────────────────────
+
+
+@_register_outer_atom_smirks("STANDARD")
+def get_outer_atom_smirks_standard(at_idx: int, mol: Chem.Mol, shell: AtomShell) -> str:
+    """Outer atom: element + degree, no ring info. E.g. ``[#6X4]``."""
+    ds = get_atom_descriptors(at_idx, mol)
+    if shell == AtomShell.OUTER_2:
+        return f"[{ds['atomic_num']}]"
+    return f"[{ds['atomic_num']}{ds['degree']}]"
+
+
+@_register_outer_atom_smirks("WITH_RING_INFO")
+def get_outer_atom_smirks_with_ring_info(at_idx: int, mol: Chem.Mol, shell: AtomShell) -> str:
+    """Outer atom: element + degree + ring info (default). E.g. ``[#6X4;!r3]``."""
+    return get_outer_atom_smirks(at_idx, mol, include_ring_info=True, shell=shell)
+
+
+@_register_outer_atom_smirks("WILDCARD")
+def get_outer_atom_smirks_wildcard(at_idx: int, mol: Chem.Mol, shell: AtomShell) -> str:
+    """Outer atom: fully generic ``[*]``."""
+    return "[*]"
+
+
+@_register_outer_atom_smirks("H_NO_H")
+def get_outer_atom_smirks_h_no_h(at_idx: int, mol: Chem.Mol, shell: AtomShell) -> str:
+    """Outer atom: ``[#1]`` for hydrogen, ``[!#1]`` for everything else."""
+    ds = get_atom_descriptors(at_idx, mol)
+    return "[#1]" if ds["atomic_num"] == "#1" else "[!#1]"
+
+
+# ── Outer-sphere bond functions ───────────────────────────────────────────────
+
+
+@_register_outer_bond_smirks("STANDARD")
+def get_outer_bond_smirks_standard(
+    outer_idx: int, core_idx: int, mol: Chem.Mol, shell: BondShell
+) -> str:
+    """Outer bond: explicit bond type, no ring info. E.g. ``-``, ``=``."""
+    return get_outer_bond_smirks_to_core(
+        outer_idx, core_idx, mol, include_ring_info=False, shell=shell
+    )
+
+
+@_register_outer_bond_smirks("WITH_RING_INFO")
+def get_outer_bond_smirks_with_ring_info(
+    outer_idx: int, core_idx: int, mol: Chem.Mol, shell: BondShell
+) -> str:
+    """Outer bond: explicit bond type + ring info (default). E.g. ``-;!@``."""
+    return get_outer_bond_smirks_to_core(
+        outer_idx, core_idx, mol, include_ring_info=True, shell=shell
+    )
+
+
+@_register_outer_bond_smirks("WILDCARD")
+def get_outer_bond_smirks_wildcard(
+    outer_idx: int, core_idx: int, mol: Chem.Mol, shell: BondShell
+) -> str:
+    """Outer bond: fully generic ``~``."""
+    return "~"
 
 
 # ============================================================================
@@ -320,7 +594,6 @@ def get_atom_smirks_terminal_h_no_h_ring_info(
         return f"[{ds['atomic_num']}{ds['degree']}{ds['ring_size']}:{at_id + 1}]"
 
 
-# ============================================================================
 # Bond SMIRKS Generation Functions
 # ============================================================================
 
@@ -429,18 +702,28 @@ def get_bond_smirks_wildcard(atom_idxs: tuple[int, int], central_bond: bool, mol
 # ============================================================================
 
 
+def _generate_parameter_worker(
+    args: tuple[str, int, list[MMComponent], int, ForceField, type[MMComponent]],
+) -> tuple[int, ParameterType]:
+    """Generate a single parameter for multiprocessing or threading."""
+    smirks, specificity_num, components, index, ff, component_class = args
+    parameter = component_class.get_parameter(smirks, specificity_num, components, index, ff)
+    return index, parameter
+
+
 def add_types_to_ff(
     ff: ForceField,
     component_types: dict[int, dict[str, list[MMComponent]]],
     component_class: type[MMComponent],
     extra_parameters: list[ParameterType] | None = None,
-    n_workers: int | None = None,  # Ignored, kept for compatibility
+    n_workers: int | None = None,
 ) -> ForceField:
     """
     Add component parameters to a force field.
 
-    This implementation is simpler and more memory-efficient than the multiprocessing
-    version. It processes parameters sequentially with a progress bar.
+    Parameters are generated in parallel using multiprocessing by default, with a
+    threaded fallback when multiprocessing is disabled or fails. This keeps memory
+    usage reasonable while accelerating parameter creation.
 
     Parameters
     ----------
@@ -453,7 +736,7 @@ def add_types_to_ff(
     extra_parameters : list[ParameterType], optional
         Additional parameters to append.
     n_workers : int, optional
-        Ignored for compatibility with old API.
+        Number of worker processes/threads. Defaults to a conservative value.
 
     Returns
     -------

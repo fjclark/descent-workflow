@@ -69,9 +69,56 @@ from openff.toolkit.typing.engines.smirnoff.parameters import (
     ImproperTorsionHandler,
 )
 
+from .outer_sphere import OuterSphereAtoms
+
 SAGE_230 = ForceField("openff_unconstrained-2.3.0.offxml")
 
-SpecificityLevel = namedtuple("SpecificityLevel", ["name", "get_atom_smirks", "get_bond_smirks"])
+# ---------------------------------------------------------------------------
+# Module-level unit constants — constructed ONCE, reused everywhere.
+# Unit arithmetic with openff-units Quantity objects is expensive; creating
+# them on every get_parameter() call (which may run thousands of times) is a
+# significant source of overhead.
+# ---------------------------------------------------------------------------
+_KCAL_PER_MOL_PER_ANG2 = off_unit.kilocalorie_per_mole / off_unit.angstroms**2
+_KCAL_PER_MOL_PER_RAD2 = off_unit.kilocalorie_per_mole / off_unit.radian**2
+_DEGREES = off_unit.degrees
+_ANGSTROMS = off_unit.angstroms
+_RADIANS = off_unit.radians
+
+# Zero-valued Quantity sentinels used as list elements for torsion defaults.
+_ZERO_K_TORSION = 0 * _KCAL_PER_MOL_PER_RAD2
+_ZERO_DEGREES = 0 * _DEGREES
+_180_DEGREES = 180 * _DEGREES
+
+# Immutable default lists shared across all ProperTorsion / ImproperTorsion
+# parameter creation calls.  We copy them on use so the handler cannot mutate
+# the originals.
+_PROPER_DEFAULT_K = [_ZERO_K_TORSION] * 4
+_PROPER_DEFAULT_PHASE = [_ZERO_DEGREES] * 4
+_PROPER_DEFAULT_PERIODICITY = [1, 2, 3, 4]
+_PROPER_DEFAULT_IDIVF = [1.0] * 4
+
+_IMPROPER_DEFAULT_K = [_ZERO_K_TORSION]
+_IMPROPER_DEFAULT_PHASE = [_180_DEGREES]
+_IMPROPER_DEFAULT_PERIODICITY = [2]
+_IMPROPER_DEFAULT_IDIVF = [1.0]
+
+SpecificityLevel = namedtuple(
+    "SpecificityLevel",
+    [
+        "name",
+        "get_atom_smirks",  # (at_idx, at_id, mol, terminal_idxs) -> str  — indexed core atoms
+        "get_bond_smirks",  # (atom_idxs, central_bond, mol) -> str       — core bonds
+        "outer_sphere_distance",  # int | None  — None = no outer sphere
+        "get_outer_atom_smirks",  # (at_idx, mol, shell) -> str                 — unindexed outer atoms
+        "get_outer_bond_smirks",  # (outer_idx, core_idx, mol, shell) -> str    — outer bonds
+    ],
+    defaults=[
+        None,
+        None,
+        None,
+    ],  # outer_sphere_distance, get_outer_atom_smirks, get_outer_bond_smirks
+)
 
 
 def get_bond_idxs(mol: Molecule) -> set[tuple[int, int]]:
@@ -246,13 +293,21 @@ class MMComponent(ABC):
     """
 
     # __slots__ = ["mapped_smiles", "indices", "mol", "rdkit_mol", "n_atoms", "handler_class", "parameter_type", "getter_fn"]
-    __slots__ = ["mapped_smiles", "indices", "mol", "rdkit_mol", "n_atoms"]
+    __slots__ = [
+        "mapped_smiles",
+        "indices",
+        "mol",
+        "rdkit_mol",
+        "n_atoms",
+        "outer_sphere_indices",
+    ]
 
     mapped_smiles: str
     indices: tuple[int, ...]
     mol: Molecule
     rdkit_mol: Chem.Mol
     n_atoms: int  # Subclass must define number of atoms
+    outer_sphere_indices: Optional[OuterSphereAtoms]  # Optional outer-sphere atom tracking
     handler_class: type[ParameterHandler]  # Subclass must define handler class
     handler_version: float
     parameter_type: type[ParameterType]  # Subclass must define parameter type
@@ -286,22 +341,32 @@ class MMComponent(ABC):
             if not hasattr(cls, attr):
                 raise TypeError(f"{cls.__name__} must define class attribute '{attr}'")
 
-    def __init__(self, indices: tuple[int, ...], mol: Molecule, rdkit_mol: Chem.Mol):
+    def __init__(
+        self,
+        indices: tuple[int, ...],
+        mol: Molecule,
+        rdkit_mol: Chem.Mol,
+        outer_sphere_indices: Optional[OuterSphereAtoms] = None,
+    ):
         """
         Initialize the molecular mechanics component.
 
         Parameters
         ----------
         indices : tuple[int, ...]
-            Atom indices defining the component.
+            Atom indices defining the component (core atoms).
         mol : openff.toolkit.Molecule
             OpenFF Molecule object.
         rdkit_mol : rdkit.Chem.Mol
             RDKit molecule representation.
+        outer_sphere_indices : Optional[OuterSphereAtoms]
+            Optional outer-sphere atom information. If provided, atoms bonded
+            to core atoms will be tracked for SMIRKS generation.
         """
         self.indices = indices
         self.mol = mol
         self.rdkit_mol = rdkit_mol
+        self.outer_sphere_indices = outer_sphere_indices
 
         # Apply MDL aromaticity model
         Chem.SetAromaticity(self.rdkit_mol, Chem.AromaticityModel.AROMATICITY_MDL)
@@ -330,9 +395,43 @@ class MMComponent(ABC):
         Returns
         -------
         tuple[int, int]
-            Indices of the first and last atoms in the component.
+            Indices of the first and last atoms in the core component.
         """
         return (0, self.n_atoms - 1)
+
+    @property
+    def all_indices(self) -> tuple[int, ...]:
+        """
+        Get all atom indices including core and outer-sphere atoms.
+
+        Returns
+        -------
+        tuple[int, ...]
+            Sorted tuple of all atom indices (core + outer). If no outer atoms,
+            returns just the core indices.
+        """
+        if self.outer_sphere_indices is None or not self.outer_sphere_indices.has_outer_atoms:
+            return self.indices
+        return self.outer_sphere_indices.all_indices
+
+    def outer_atoms_at_distance(self, distance: int) -> tuple[int, ...]:
+        """
+        Get outer-sphere atoms at a specific distance from core atoms.
+
+        Parameters
+        ----------
+        distance : int
+            Distance in bonds from core atoms.
+
+        Returns
+        -------
+        tuple[int, ...]
+            Atom indices at the specified distance, or empty tuple if none
+            or if outer-sphere information not available.
+        """
+        if self.outer_sphere_indices is None:
+            return ()
+        return self.outer_sphere_indices.get_atoms_at_distance(distance)
 
     def _construct_smirks(self, atoms: list[str], bonds: list[str]) -> str:
         """
@@ -367,6 +466,121 @@ class MMComponent(ABC):
 
         return smirks
 
+    def _construct_smirks_with_outer_sphere(
+        self,
+        atoms: list[str],
+        bonds: list[str],
+        outer_atoms_by_idx: dict[int, list[str]],
+    ) -> str:
+        """
+        Construct SMIRKS representation including outer-sphere atoms.
+
+        Outer-sphere atoms are attached to core atoms using parentheses syntax
+        appended *after* the closing bracket of each indexed atom token.
+        For example: [#6X4:1](-[#1])(-[#1])-[#6X4:2] represents a C-C bond
+        where the first carbon is bonded to two hydrogens.
+
+        Parameters
+        ----------
+        atoms : list[str]
+            List of core atom SMIRKS patterns (indexed), e.g. ``["[#6X4:1]", "[#6X4:2]"]``.
+        bonds : list[str]
+            List of bond SMIRKS patterns between core atoms.
+        outer_atoms_by_idx : dict[int, list[str]]
+            Mapping from core atom position (0-based) to a list of branch strings.
+            Each branch is already formatted as ``"(bond_smarts[atom_smarts])"``.
+            Example: ``{0: "(-;!@[#1X1;!r3])", 1: "(-[#8X2])"}``.
+
+        Returns
+        -------
+        str
+            Complete SMIRKS pattern including outer-sphere atoms.
+        """
+        # Validate input
+        assert len(atoms) == self.n_atoms, f"Expected {self.n_atoms} atoms, got {len(atoms)}"
+        assert len(bonds) == self.n_atoms - 1, (
+            f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
+        )
+
+        # Append outer-sphere branches *after* each indexed atom token (correct SMIRKS syntax).
+        # Correct: [#6X4:1](-[#1])  Wrong: [#6X4:1(-[#1])]
+        smirks_atoms = [
+            atom + "".join(outer_atoms_by_idx.get(i, [])) for i, atom in enumerate(atoms)
+        ]
+
+        # Construct full SMIRKS
+        smirks = smirks_atoms[0]
+        for bond, atom in zip(bonds, smirks_atoms[1:], strict=True):
+            smirks += f"{bond}{atom}"
+
+        return smirks
+
+    def _build_outer_patterns(
+        self,
+        core_idxs_ordered: tuple[int, ...],
+        get_outer_atom_smirks: Callable,
+        get_outer_bond_smirks: Callable,
+        max_distance: int = 1,
+    ) -> dict[int, list[str]]:
+        """
+        Build outer-sphere branch patterns for a given ordering of core atoms.
+
+        Returns a mapping from core-atom *position* (in ``core_idxs_ordered``) to
+        a list of branch strings, each formatted as
+        ``"(bond_smarts[atom_smarts])"``.
+
+        Parameters
+        ----------
+        core_idxs_ordered : tuple[int, ...]
+            Core atom indices in the desired traversal order (forward or reversed).
+        get_outer_atom_smirks : Callable
+            Function to generate outer-sphere unindexed atom SMIRKS.
+        get_outer_bond_smirks : Callable
+            Function to generate outer-sphere unindexed bond SMIRKS.
+        max_distance : int, optional
+            Maximum shell distance to include (1 or 2). Atoms at distances
+            greater than this are ignored even if present in
+            ``self.outer_sphere_indices``. Default is 1.
+
+        Returns
+        -------
+        dict[int, list[str]]
+            ``{position: ["(-[#1])", ...], ...}``
+        """
+        from .process_SMIRKS import AtomShell, BondShell
+
+        outer_atoms_by_idx: dict[int, list[str]] = {}
+
+        for core_pos, core_idx in enumerate(core_idxs_ordered):
+            outer_patterns: list[str] = []
+
+            available_distances = [
+                d
+                for d in sorted(self.outer_sphere_indices.outer_by_distance.keys())  # type: ignore[union-attr]
+                if d <= max_distance
+            ]
+            for distance in available_distances:
+                shell_atom = AtomShell.OUTER_1 if distance == 1 else AtomShell.OUTER_2
+                shell_bond = BondShell.OUTER_1 if distance == 1 else BondShell.OUTER_2
+
+                for outer_idx in self.outer_sphere_indices.get_atoms_at_distance(distance):  # type: ignore[union-attr]
+                    # Only include outer atoms actually bonded to this core atom
+                    if self.rdkit_mol.GetBondBetweenAtoms(core_idx, outer_idx) is None:
+                        continue
+
+                    outer_atom_pattern = get_outer_atom_smirks(
+                        outer_idx, self.rdkit_mol, shell=shell_atom
+                    )
+                    outer_bond_pattern = get_outer_bond_smirks(
+                        outer_idx, core_idx, self.rdkit_mol, shell=shell_bond
+                    )
+                    outer_patterns.append(f"({outer_bond_pattern}{outer_atom_pattern})")
+
+            if outer_patterns:
+                outer_atoms_by_idx[core_pos] = outer_patterns
+
+        return outer_atoms_by_idx
+
     def get_smirks(self, specificity_level: SpecificityLevel) -> str:
         """
         Generate SMIRKS representation for the component.
@@ -375,6 +589,11 @@ class MMComponent(ABC):
         ----------
         specificity_level : SpecificityLevel
             Defines the level of detail for atom and bond descriptions.
+            If ``specificity_level.outer_sphere_distance`` is an integer
+            (1 or 2), outer-sphere atoms up to that shell are included as
+            unindexed branch atoms appended after each indexed atom token.
+            If ``None`` (the default), no outer-sphere expansion is performed
+            even when ``outer_sphere_indices`` is populated on the component.
 
         Returns
         -------
@@ -383,6 +602,13 @@ class MMComponent(ABC):
             lexicographically smallest pattern to ensure consistency
             regardless of atom ordering.
         """
+        outer_distance: int | None = specificity_level.outer_sphere_distance
+        has_outer_sphere = (
+            outer_distance is not None
+            and self.outer_sphere_indices is not None
+            and self.outer_sphere_indices.has_outer_atoms
+        )
+
         idxs = self.indices
         n = self.n_atoms
 
@@ -408,8 +634,27 @@ class MMComponent(ABC):
             for j in range(n - 1)
         ]
 
-        smirks_fwd = self._construct_smirks(atoms_fwd, bonds_fwd)
-        smirks_bwd = self._construct_smirks(atoms_bwd, list(reversed(bonds_fwd)))
+        if has_outer_sphere:
+            outer_fwd = self._build_outer_patterns(
+                tuple(idxs),
+                get_outer_atom_smirks=specificity_level.get_outer_atom_smirks,
+                get_outer_bond_smirks=specificity_level.get_outer_bond_smirks,
+                max_distance=outer_distance,
+            )
+            outer_bwd = self._build_outer_patterns(
+                tuple(reversed(idxs)),
+                get_outer_atom_smirks=specificity_level.get_outer_atom_smirks,
+                get_outer_bond_smirks=specificity_level.get_outer_bond_smirks,
+                max_distance=outer_distance,
+            )
+
+            smirks_fwd = self._construct_smirks_with_outer_sphere(atoms_fwd, bonds_fwd, outer_fwd)
+            smirks_bwd = self._construct_smirks_with_outer_sphere(
+                atoms_bwd, list(reversed(bonds_fwd)), outer_bwd
+            )
+        else:
+            smirks_fwd = self._construct_smirks(atoms_fwd, bonds_fwd)
+            smirks_bwd = self._construct_smirks(atoms_bwd, list(reversed(bonds_fwd)))
 
         # Return the lexicographically smallest SMIRKS representation to ensure
         # that the order of atoms does not affect the representation.
@@ -551,12 +796,12 @@ class Bond(MMComponent):
         # assert all(isinstance(c, Bond) for c in components), f"All components must be Bond instances but got {[type(c) for c in components]}"
 
         base_ff_parameters = get_parameters_for_components(components, base_ff)
-        k_unit = off_unit.kilocalorie_per_mole / off_unit.angstroms**2
-        mean_k = np.mean([p.k.m_as(k_unit) for p in base_ff_parameters]) * k_unit
-        length_unit = off_unit.angstroms
-        mean_length = (
-            np.mean([p.length.m_as(length_unit) for p in base_ff_parameters]) * length_unit
+        # Reuse module-level unit constants — avoids repeated unit arithmetic.
+        mean_k = (
+            np.mean([p.k.m_as(_KCAL_PER_MOL_PER_ANG2) for p in base_ff_parameters])
+            * _KCAL_PER_MOL_PER_ANG2
         )
+        mean_length = np.mean([p.length.m_as(_ANGSTROMS) for p in base_ff_parameters]) * _ANGSTROMS
 
         parameter = BondHandler.BondType(
             smirks=smirks,
@@ -686,10 +931,12 @@ class Angle(MMComponent):
         # assert all(isinstance(c, Angle) for c in components), f"All components must be Angle instances but got {[type(c) for c in components]}"
 
         base_ff_parameters = get_parameters_for_components(components, base_ff)
-        k_unit = off_unit.kilocalorie_per_mole / off_unit.radians**2
-        mean_k = np.mean([p.k.m_as(k_unit) for p in base_ff_parameters]) * k_unit
-        angle_unit = off_unit.degrees
-        mean_angle = np.mean([p.angle.m_as(angle_unit) for p in base_ff_parameters]) * angle_unit
+        # Reuse module-level unit constants — avoids repeated unit arithmetic.
+        mean_k = (
+            np.mean([p.k.m_as(_KCAL_PER_MOL_PER_RAD2) for p in base_ff_parameters])
+            * _KCAL_PER_MOL_PER_RAD2
+        )
+        mean_angle = np.mean([p.angle.m_as(_DEGREES) for p in base_ff_parameters]) * _DEGREES
 
         parameter = AngleHandler.AngleType(
             smirks=smirks,
@@ -827,12 +1074,15 @@ class ProperTorsion(MMComponent):
             Proper torsion parameter with default values for 4 periodicities.
         """
         # assert all(isinstance(c, ProperTorsion) for c in components), "All components must be ProperTorsion instances"
+        #
+        # Use module-level cached default lists. We pass copies so the handler
+        # cannot mutate the shared originals.
         parameter = ProperTorsionHandler.ProperTorsionType(
             smirks=smirks,
-            k=[0 * off_unit.kilocalorie_per_mole / off_unit.radian**2] * 4,  # Default K values
-            phase=[0 * off_unit.degrees] * 4,  # Default phase values
-            periodicity=[1, 2, 3, 4],  # Default periodicities
-            idivf=[1.0] * 4,  # Default idivf values
+            k=list(_PROPER_DEFAULT_K),
+            phase=list(_PROPER_DEFAULT_PHASE),
+            periodicity=list(_PROPER_DEFAULT_PERIODICITY),
+            idivf=list(_PROPER_DEFAULT_IDIVF),
             id=f"specificity={specificity_num} index={index} count={len(components)}",
         )
         return parameter
@@ -985,15 +1235,22 @@ class ImproperTorsion(MMComponent):
             Improper torsion parameter with default values.
         """
         # assert all(isinstance(c, ImproperTorsion) for c in components), "All components must be ImproperTorsion instances"
+        #
+        # Use module-level cached default lists. We pass copies so the handler
+        # cannot mutate the shared originals.
         parameter = ImproperTorsionHandler.ImproperTorsionType(
             smirks=smirks,
-            k=[0 * off_unit.kilocalorie_per_mole / off_unit.radian**2],  # Default K value
-            phase=[180 * off_unit.degrees],  # Default phase value
-            periodicity=[2],  # Default periodicity
-            idivf=[1.0],  # Default idivf value
+            k=list(_IMPROPER_DEFAULT_K),
+            phase=list(_IMPROPER_DEFAULT_PHASE),
+            periodicity=list(_IMPROPER_DEFAULT_PERIODICITY),
+            idivf=list(_IMPROPER_DEFAULT_IDIVF),
             id=f"specificity={specificity_num} index={index} count={len(components)}",
         )
         return parameter
+
+
+# Cache for labeling results to avoid re-labeling the same molecules
+_LABELING_CACHE: dict[tuple, dict] = {}
 
 
 def get_parameters_for_components(
@@ -1026,6 +1283,9 @@ def get_parameters_for_components(
     subset is chosen for parameter extraction. This provides a representative
     sample while keeping computation time reasonable.
 
+    Molecule labeling results are cached to avoid redundant computation
+    when the same molecule appears in multiple component lists.
+
     Examples
     --------
     >>> bonds = [Bond(...), Bond(...)]  # List of bond components
@@ -1039,9 +1299,13 @@ def get_parameters_for_components(
         else np.random.choice(components, max_samples, replace=False)
     )
     for c in subsampled_components:
-        assigned_parameters = forcefield.label_molecules(c.mol.to_topology())[
-            0
-        ]  # As only one molecule
+        cache_key = (c.mapped_smiles, id(forcefield))
+
+        # Reuse cached labeling if available
+        if cache_key not in _LABELING_CACHE:
+            _LABELING_CACHE[cache_key] = forcefield.label_molecules(c.mol.to_topology())[0]
+
+        assigned_parameters = _LABELING_CACHE[cache_key]
         tag_name = c.handler_class._TAGNAME
         if tag_name is not None:
             parameters.append(assigned_parameters[tag_name][c.indices])

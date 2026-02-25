@@ -1,0 +1,161 @@
+version: "0.1.0"
+experiment_name: spice2_linearised_harmonics_minibatch_outer_sphere
+experiment_description: >
+  Fit to SPICE 2 with linearised harmonics and minibatching.
+  Uses two specificity levels per component: the most specific level includes
+  first-shell outer-sphere neighbours; the less specific level uses standard
+  SMIRKS with no outer-sphere context. Components are extracted with
+  max_outer_sphere_distance=1 to support the more specific level.
+data_dir: data/spice2
+get_data_fn: get_data.get_data_spice2_force_filtered
+get_data_output_smiles: data/spice2/smiles_test_train.json
+starting_force_field_path: input_ff/lj-sage-2-2-ashgc-msm-0-expanded-torsions.offxml
+filter_and_cluster_fn: descent_workflow.filter.filter_spice2
+batch_size: 600
+n_epochs: 30
+learning_rate: 0.02
+energy_weight: 1.0
+force_weight: 1.0
+torsion_weight: 0.0
+torsion_reg: l1
+minibatch_size: 256
+attributes: {}
+
+# ── Bespoke type generation ───────────────────────────────────────────────────
+type_generation_protocol_name: "outer_sphere_two_level"
+type_generation_config:
+
+  component_types:
+    - "Bond"
+    - "Angle"
+    - "ProperTorsion"
+    - "ImproperTorsion"
+
+  # Minimum instances required to retain a type at a given specificity level.
+  cutoff_population: 10
+
+  # ── Outer-sphere extraction ───────────────────────────────────────────────
+  # Components are always extracted with outer-sphere data up to this depth.
+  # Must be >= the highest outer_sphere_distance used in any specificity level.
+  enable_outer_sphere: true
+  max_outer_sphere_distance: 1
+
+  # ── Specificity levels ────────────────────────────────────────────────────
+  # Levels are ordered from LEAST to MOST specific.
+  # Rare patterns that fall below cutoff_population at the most specific level
+  # are demoted to the next level down.
+  #
+  # outer_sphere_distance:
+  #   null (or omitted)  → no outer-sphere expansion  (standard SMIRKS)
+  #   1                  → include first-shell neighbours
+  #   2                  → include first- and second-shell neighbours
+
+  bond_specificities:
+    Standard:               # Less specific: no outer sphere
+      atom_smirks: "STANDARD"
+      bond_smirks: "WILDCARD"
+      # outer_sphere_distance omitted → null → no outer sphere
+    WithNeighbors:          # Most specific: first-shell outer sphere
+      atom_smirks: "STANDARD"
+      bond_smirks: "WILDCARD"
+      outer_sphere_distance: 1
+      outer_atom_smirks: "STANDARD"
+      outer_bond_smirks: "WILDCARD"
+
+  angle_specificities:
+    Standard:
+      atom_smirks: "STANDARD"
+      bond_smirks: "WILDCARD"
+    WithNeighbors:
+      atom_smirks: "STANDARD"
+      bond_smirks: "WILDCARD"
+      outer_sphere_distance: 1
+      outer_atom_smirks: "STANDARD"
+      outer_bond_smirks: "WILDCARD"
+
+  torsion_specificities:
+    Standard:
+      atom_smirks: "STANDARD"
+      bond_smirks: "WILDCARD"
+    WithNeighbors:
+      atom_smirks: "STANDARD"
+      bond_smirks: "WILDCARD"
+      outer_sphere_distance: 1
+      outer_atom_smirks: "STANDARD"
+      outer_bond_smirks: "WILDCARD"
+
+  improper_specificities:
+    Standard:
+      atom_smirks: "STANDARD"
+      bond_smirks: "WILDCARD"
+    WithNeighbors:
+      atom_smirks: "STANDARD"
+      bond_smirks: "WILDCARD"
+      outer_sphere_distance: 1
+      outer_atom_smirks: "STANDARD"
+      outer_bond_smirks: "WILDCARD"
+
+  # Coverage SMILES paths
+  coverage_smiles_paths:
+    tnet_500: smiles_for_coverage/tnet_smiles.csv
+    industry_benchmark: smiles_for_coverage/industry_benchmark_smiles.csv
+
+  # Unwanted / extra torsion parameters (inherited from base config)
+  unwanted_smirks_paths:
+    ProperTorsion: "input_ff/linear_torsions.offxml"
+
+  extra_parameters_paths:
+    ProperTorsion: "input_ff/linear_torsions.offxml"
+
+parameters:
+  LinearBonds:
+    cols:
+    - k1
+    - k2
+    scales:
+      k1: 0.0028
+      k2: 0.0028
+    limits:
+      k1:
+      - 1E-8
+      - null
+      k2:
+      - 1E-8
+      - null
+  LinearAngles:
+    cols:
+    - k1
+    - k2
+    scales:
+      k1: 0.012
+      k2: 0.011
+    limits:
+      k1:
+      - 1E-8
+      - null
+      k2:
+      - 1E-8
+      - null
+  ProperTorsions:
+    cols:
+    - k
+    scales:
+      k: 1.3
+    exclude:
+    - id: '[*:1]-[*:2]#[*:3]-[*:4]'
+      mult: 0
+      associated_handler: ProperTorsions
+      bond_order: null
+    - id: '[*:1]~[*:2]-[*:3]#[*:4]'
+      mult: 0
+      associated_handler: ProperTorsions
+      bond_order: null
+    - id: '[*:1]~[*:2]=[#6,#7,#16,#15;X2:3]=[*:4]'
+      mult: 0
+      associated_handler: ProperTorsions
+      bond_order: null
+  ImproperTorsions:
+    cols:
+    - k
+    scales:
+      k: 0.12

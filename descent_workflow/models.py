@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 from descent.train import AttributeConfig, ParameterConfig
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 from pydantic import BaseModel, Field, validator, model_validator
 
 __version__ = version("descent-workflow")

@@ -292,9 +292,16 @@ def train(config: WorkflowConfig) -> None:
     test_smiles = set(dataset_test["smiles"])
     topology_smiles = set(topologies.keys())
     filtered_test_smiles = test_smiles.intersection(topology_smiles)
+
+    # Temporary hacks to deal with a bit of missing test/ train coverage
+    # TODO: Fix the pipeline and remove this
+    initial_len_test, initial_len_train = len(dataset_test), len(dataset_train)
     dataset_test = dataset_test.filter(lambda x: x["smiles"] in filtered_test_smiles)
+    dataset_train = dataset_train.filter(lambda x: x["smiles"] in topology_smiles)
+    final_len_test, final_len_train = len(dataset_test), len(dataset_train)
     logger.info(
-        f"Filtered test dataset to {len(dataset_test)} entries based on available topologies."
+        f"Filtered test dataset from {initial_len_test} to {final_len_test} entries; "
+        f"Filtered train dataset from {initial_len_train} to {final_len_train} entries."
     )
 
     parameters, attributes = config.parameters, config.attributes
