@@ -1,0 +1,1 @@
+Fit to SPICE 2 with linearised harmonics and minibatching. Uses two specificity levels per component: the most specific level includes first-shell outer-sphere neighbours; the less specific level uses standard SMIRKS with no outer-sphere context. Components are extracted with max_outer_sphere_distance=1 to support the more specific level.

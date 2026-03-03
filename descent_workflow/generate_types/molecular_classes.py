@@ -146,7 +146,10 @@ def get_bond_idxs(mol: Molecule) -> set[tuple[int, int]]:
     """
     return cast(
         set[tuple[int, int]],
-        {tuple(sorted((a.molecule_atom_index for a in bond.atoms))) for bond in mol.bonds},
+        {
+            tuple(sorted((a.molecule_atom_index for a in bond.atoms)))
+            for bond in mol.bonds
+        },
     )
 
 
@@ -231,7 +234,9 @@ def get_improper_torsion_idxs(mol: Molecule) -> set[tuple[int, int, int, int]]:
     >>> impropers = get_improper_torsion_idxs(mol)
     """
     # For the moment, find the impropers assigned by sage2.3.0 and just use those.
-    return set(SAGE_230.label_molecules(mol.to_topology())[0]["ImproperTorsions"].keys())
+    return set(
+        SAGE_230.label_molecules(mol.to_topology())[0]["ImproperTorsions"].keys()
+    )
 
 
 class MMComponent(ABC):
@@ -307,11 +312,15 @@ class MMComponent(ABC):
     mol: Molecule
     rdkit_mol: Chem.Mol
     n_atoms: int  # Subclass must define number of atoms
-    outer_sphere_indices: Optional[OuterSphereAtoms]  # Optional outer-sphere atom tracking
+    outer_sphere_indices: Optional[
+        OuterSphereAtoms
+    ]  # Optional outer-sphere atom tracking
     handler_class: type[ParameterHandler]  # Subclass must define handler class
     handler_version: float
     parameter_type: type[ParameterType]  # Subclass must define parameter type
-    getter_fn: Callable[[Molecule], set[tuple[int, ...]]]  # Subclass must define getter function
+    getter_fn: Callable[
+        [Molecule], set[tuple[int, ...]]
+    ]  # Subclass must define getter function
 
     def __init_subclass__(cls, **kwargs):
         """
@@ -410,7 +419,10 @@ class MMComponent(ABC):
             Sorted tuple of all atom indices (core + outer). If no outer atoms,
             returns just the core indices.
         """
-        if self.outer_sphere_indices is None or not self.outer_sphere_indices.has_outer_atoms:
+        if (
+            self.outer_sphere_indices is None
+            or not self.outer_sphere_indices.has_outer_atoms
+        ):
             return self.indices
         return self.outer_sphere_indices.all_indices
 
@@ -455,10 +467,12 @@ class MMComponent(ABC):
             If the number of atoms or bonds is inconsistent with component type.
         """
         # Make sure that the lengths of atoms and bonds are consistent
-        assert len(atoms) == self.n_atoms, f"Expected {self.n_atoms} atoms, got {len(atoms)}"
-        assert len(bonds) == self.n_atoms - 1, (
-            f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
-        )
+        assert (
+            len(atoms) == self.n_atoms
+        ), f"Expected {self.n_atoms} atoms, got {len(atoms)}"
+        assert (
+            len(bonds) == self.n_atoms - 1
+        ), f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
 
         smirks = atoms[0]
         for bond, atom in zip(bonds, atoms[1:], strict=True):
@@ -497,15 +511,18 @@ class MMComponent(ABC):
             Complete SMIRKS pattern including outer-sphere atoms.
         """
         # Validate input
-        assert len(atoms) == self.n_atoms, f"Expected {self.n_atoms} atoms, got {len(atoms)}"
-        assert len(bonds) == self.n_atoms - 1, (
-            f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
-        )
+        assert (
+            len(atoms) == self.n_atoms
+        ), f"Expected {self.n_atoms} atoms, got {len(atoms)}"
+        assert (
+            len(bonds) == self.n_atoms - 1
+        ), f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
 
         # Append outer-sphere branches *after* each indexed atom token (correct SMIRKS syntax).
         # Correct: [#6X4:1](-[#1])  Wrong: [#6X4:1(-[#1])]
         smirks_atoms = [
-            atom + "".join(outer_atoms_by_idx.get(i, [])) for i, atom in enumerate(atoms)
+            atom + "".join(outer_atoms_by_idx.get(i, []))
+            for i, atom in enumerate(atoms)
         ]
 
         # Construct full SMIRKS
@@ -648,7 +665,9 @@ class MMComponent(ABC):
                 max_distance=outer_distance,
             )
 
-            smirks_fwd = self._construct_smirks_with_outer_sphere(atoms_fwd, bonds_fwd, outer_fwd)
+            smirks_fwd = self._construct_smirks_with_outer_sphere(
+                atoms_fwd, bonds_fwd, outer_fwd
+            )
             smirks_bwd = self._construct_smirks_with_outer_sphere(
                 atoms_bwd, list(reversed(bonds_fwd)), outer_bwd
             )
@@ -801,7 +820,10 @@ class Bond(MMComponent):
             np.mean([p.k.m_as(_KCAL_PER_MOL_PER_ANG2) for p in base_ff_parameters])
             * _KCAL_PER_MOL_PER_ANG2
         )
-        mean_length = np.mean([p.length.m_as(_ANGSTROMS) for p in base_ff_parameters]) * _ANGSTROMS
+        mean_length = (
+            np.mean([p.length.m_as(_ANGSTROMS) for p in base_ff_parameters])
+            * _ANGSTROMS
+        )
 
         parameter = BondHandler.BondType(
             smirks=smirks,
@@ -936,7 +958,9 @@ class Angle(MMComponent):
             np.mean([p.k.m_as(_KCAL_PER_MOL_PER_RAD2) for p in base_ff_parameters])
             * _KCAL_PER_MOL_PER_RAD2
         )
-        mean_angle = np.mean([p.angle.m_as(_DEGREES) for p in base_ff_parameters]) * _DEGREES
+        mean_angle = (
+            np.mean([p.angle.m_as(_DEGREES) for p in base_ff_parameters]) * _DEGREES
+        )
 
         parameter = AngleHandler.AngleType(
             smirks=smirks,
@@ -1157,12 +1181,16 @@ class ImproperTorsion(MMComponent):
             If the number of atoms or bonds is incorrect.
         """
         # Make sure that the lengths of atoms and bonds are consistent
-        assert len(atoms) == self.n_atoms, f"Expected {self.n_atoms} atoms, got {len(atoms)}"
-        assert len(bonds) == self.n_atoms - 1, (
-            f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
-        )
+        assert (
+            len(atoms) == self.n_atoms
+        ), f"Expected {self.n_atoms} atoms, got {len(atoms)}"
+        assert (
+            len(bonds) == self.n_atoms - 1
+        ), f"Expected {self.n_atoms - 1} bonds, got {len(bonds)}"
 
-        return f"{atoms[0]}{bonds[0]}{atoms[1]}({bonds[1]}{atoms[2]}){bonds[2]}{atoms[3]}"
+        return (
+            f"{atoms[0]}{bonds[0]}{atoms[1]}({bonds[1]}{atoms[2]}){bonds[2]}{atoms[3]}"
+        )
 
     def get_smirks(self, specificity_level: SpecificityLevel) -> str:
         """
@@ -1303,7 +1331,9 @@ def get_parameters_for_components(
 
         # Reuse cached labeling if available
         if cache_key not in _LABELING_CACHE:
-            _LABELING_CACHE[cache_key] = forcefield.label_molecules(c.mol.to_topology())[0]
+            _LABELING_CACHE[cache_key] = forcefield.label_molecules(
+                c.mol.to_topology()
+            )[0]
 
         assigned_parameters = _LABELING_CACHE[cache_key]
         tag_name = c.handler_class._TAGNAME
