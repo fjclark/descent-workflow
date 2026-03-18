@@ -72,7 +72,7 @@ bokeh = ">=3.8.2,<4"
 descent-workflow = { path = ".", editable = true }
 smee = { git = "https://github.com/thomasjamespope/smee.git" }
 descent = { git = "https://github.com/fjclark/descent.git", branch = "feature-regularization" }
-yammbs = { git = "https://github.com/openforcefield/yammbs.git" }
+yammbs = { git = "https://github.com/fjclark/yammbs.git", rev = "b89f9798db32e08049840035d937cba0375c38eb" }
 deepchem = "*"
 
 [tool.pixi.tasks]

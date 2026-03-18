@@ -118,9 +118,9 @@ def run_yammbs_benchmarking(config: WorkflowConfig) -> None:
     yammbs_benchmark_script_path = (
         Path(__file__).parent / "run_yammbs_script.py"
     ).absolute()
-    ff_path = (Path(__file__).parent / config.output_ff_path).absolute()
+    ff_path = (Path(__file__).parent.parent / config.output_ff_path).absolute()
     industry_benchmark_path = (
-        Path(__file__).parent / "benchmarking" / "industry_benchmark"
+        Path(__file__).parent.parent / "benchmarking" / "industry_benchmark"
     ).absolute()
     cached_dataset_path = (
         industry_benchmark_path / "input_data" / "filtered-industry-cached.json"
@@ -128,33 +128,37 @@ def run_yammbs_benchmarking(config: WorkflowConfig) -> None:
 
     # Set up directories
     output_dir = industry_benchmark_path / "output" / config.experiment_name
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if output_dir.exists():
+        # Skip
+        logger.info(
+            f"Output directory {output_dir} already exists. Skipping benchmark for {config.experiment_name}."
+        )
+    else:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Run benchmark script with subprocess
-    args = [
-        "python",
-        "-u",
-        str(yammbs_benchmark_script_path),
-        "--forcefield",
-        str(ff_path),
-        "--dataset",
-        str(cached_dataset_path),
-        "--sqlite-file",
-        str(output_dir / "benchmark.sqlite"),
-        "--out-dir",
-        str(output_dir),
-        "--procs",
-        str(multiprocessing.cpu_count()),
-    ]
+        # Run benchmark script with subprocess
+        args = [
+            "python",
+            "-u",
+            str(yammbs_benchmark_script_path),
+            "--forcefield",
+            str(ff_path),
+            "--dataset",
+            str(cached_dataset_path),
+            "--sqlite-file",
+            str(output_dir / "benchmark.sqlite"),
+            "--out-dir",
+            str(output_dir),
+            "--procs",
+            str(multiprocessing.cpu_count()),
+        ]
 
-    logger.info(f"Running benchmark with args: {args}")
-    subprocess.run(args, check=True)
-    logger.info(f"Benchmark complete. Results saved to {output_dir}", flush=True)
+        logger.info(f"Running benchmark with args: {args}")
+        subprocess.run(args, check=True)
+        logger.info(f"Benchmark complete. Results saved to {output_dir}", flush=True)
 
-    # Also run the benchmark with openff2.2.0
-    ff_path = (
-        Path(__file__).parent / "output_ff/openff_unconstrained-2.3.0.offxml"
-    ).absolute()
+    # Also run the benchmark with openff2.3.0
+    ff_path = "openff_unconstrained-2.3.0.offxml"
     output_dir = industry_benchmark_path / "output" / "openff2.3.0"
 
     if output_dir.exists():

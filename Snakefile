@@ -16,6 +16,7 @@ from descent_workflow.parameterise import create_torch_ff_and_top
 from descent_workflow.train import train
 from descent_workflow.utils import get_fn
 from descent_workflow.generate_types import generate_bespoke_types, TypeGenConfig
+from descent_workflow.benchmark import run_yammbs_benchmarking
 
 # Load the configuration from a yaml file
 if workflow.configfiles:
@@ -245,7 +246,7 @@ rule run_torsion_benchmark:
             --plot-dir {params.output_dir} \
             --base-force-fields openff-2.3.0 \
             --extra-force-fields {workflow_config.output_ff_path} \
-            --method openmm_restrained
+            --method openmm_torsion_restrained
         """
 
 

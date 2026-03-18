@@ -539,7 +539,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/6a/c9/3bf4473e3b8131a733219346ff90cdab98e019b90c944fc339a599fc8896/deepchem-2.8.0-py3-none-any.whl
       - pypi: git+https://github.com/fjclark/descent.git?branch=feature-regularization#2ffa43566eac6992199b5407216011001f981cd0
       - pypi: git+https://github.com/thomasjamespope/smee.git#483fbe33020c04531e06d3c8a91e6258c91f55ec
-      - pypi: git+https://github.com/openforcefield/yammbs.git#d366e45a3b7f1ee4ee982192ad03a6fc1642a208
+      - pypi: git+https://github.com/fjclark/yammbs.git?rev=b89f9798db32e08049840035d937cba0375c38eb#b89f9798db32e08049840035d937cba0375c38eb
       - pypi: ./
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-7_kmp_llvm.conda
@@ -1978,8 +1978,8 @@ packages:
   requires_python: '>=3.10'
 - pypi: ./
   name: descent-workflow
-  version: 0.1.1.dev2+gc24ce5fce.d20260224
-  sha256: 4b5efd1d538d57a24a4f6929ce28502e7dd4e3a41459c27e37a6be1c31c3b2c1
+  version: 0.1.1.dev6+g43ac248fa.d20260309
+  sha256: 7e9e7f2d9beb4a34e469807b0e8f9fe6adbce325a95a4349470efa71f2351cfd
   requires_python: '>=3.10'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/dgl-2.1.0-cuda120py312h22db543_0.conda
   sha256: f58639c555493d8f15d02b3d2eba8fd97d2d6a7373ee64ef033359d50951e4d5
@@ -8096,9 +8096,9 @@ packages:
   purls: []
   size: 85189
   timestamp: 1753484064210
-- pypi: git+https://github.com/openforcefield/yammbs.git#d366e45a3b7f1ee4ee982192ad03a6fc1642a208
+- pypi: git+https://github.com/fjclark/yammbs.git?rev=b89f9798db32e08049840035d937cba0375c38eb#b89f9798db32e08049840035d937cba0375c38eb
   name: yammbs
-  version: 0.3.2.dev6+gd366e45a3
+  version: 0.0.1.dev472+gb89f9798d
   requires_python: '>=3.11'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/yarl-1.22.0-py312h8a5da7c_0.conda
   sha256: 6e3f2db09387fc982b5400b842745084825cd2d4621e8278e4af8fb0dc2b55d8
