@@ -1,0 +1,1 @@
+Fit to SPICE 2 (filtered out larger forces) with linearised harmonics, with minibatching, and with very specific bond types (with recursion) and otherwise Sage 2.3.0 types. Initial force field from Jen (https://raw.githubusercontent.com/openforcefield/back-to-school-jen/refs/heads/main/4_make_offxmls/e_broad_spec_recursion1/openff-2.3.0-bondtypes-recursion.offxml).
