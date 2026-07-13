@@ -338,6 +338,108 @@ def get_data_spice2_force_filtered(data_dir: pathlib.Path | str) -> None:
     logger.info("Done getting data for SPICE.")
 
 
+def split_train_test(
+    data_dir: pathlib.Path | str,
+    dataset: datasets.Dataset,
+    frac_train: float = 0.95,
+    seed: int = 42,
+) -> None:
+    """Randomly split a descent dataset into train/test at the molecule level.
+
+    Splits by unique SMILES (not by row) so no molecule appears in both sets, then writes
+    ``data_dir/data-train``, ``data_dir/data-test`` and ``data_dir/smiles_test_train.json``
+    (``{"train": [...], "test": [...]}``) — the layout consumed by ``filter.filter_spice2``
+    and ``parameterise.create_torch_ff_and_top``.
+    """
+    data_dir = pathlib.Path(data_dir)
+    logger.info(f"Randomly splitting dataset ({len(dataset):,} rows) into train/test...")
+
+    unique_smiles = list(dataset.unique("smiles"))
+    rng = np.random.default_rng(seed)
+    rng.shuffle(unique_smiles)
+    n_train = int(round(frac_train * len(unique_smiles)))
+    train_smiles = set(unique_smiles[:n_train])
+    test_smiles = set(unique_smiles[n_train:])
+    logger.info(
+        f"Split {len(unique_smiles):,} molecules -> "
+        f"{len(train_smiles):,} train / {len(test_smiles):,} test"
+    )
+
+    # Partition rows via the (cheap) smiles column rather than iterating full rows.
+    smiles_col = dataset["smiles"]
+    train_index = [i for i, s in enumerate(smiles_col) if s in train_smiles]
+    test_index = [i for i, s in enumerate(smiles_col) if s in test_smiles]
+
+    train_split = dataset.select(indices=train_index)
+    test_split = dataset.select(indices=test_index)
+
+    train_split.save_to_disk(str(data_dir / "data-train"))
+    test_split.save_to_disk(str(data_dir / "data-test"))
+    logger.info(
+        f"Saved {len(train_split):,} train and {len(test_split):,} test rows to {data_dir}"
+    )
+
+    smiles_train_test_dict = {
+        "train": train_split.unique("smiles"),
+        "test": test_split.unique("smiles"),
+    }
+    with open(data_dir / "smiles_test_train.json", "w") as file:
+        json.dump(smiles_train_test_dict, file)
+    logger.info(f"Saved train/test smiles to {data_dir / 'smiles_test_train.json'}")
+
+
+def get_data_omol25_combined(data_dir: pathlib.Path | str) -> None:
+    """Download, reprocess and combine the OMol25 SPICE + GEOM datasets for fitting.
+
+    Reproduces the ``tmp_geom`` pipeline from scratch: downloads the raw descent-format
+    SPICE and GEOM HuggingFace datasets, fetches SPICE metadata, deduplicates each
+    (stereo-collapsed, ``min_conformers=5``; SPICE also filtered to the
+    ``pubchem_numbered+dipeptides`` source preset), concatenates them, and writes a random
+    95/5 train/test split. Every expensive step skips when its output already exists, so
+    the rule is restartable.
+    """
+    from . import omol25
+
+    data_dir = pathlib.Path(data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Getting combined OMol25 SPICE + GEOM data...")
+
+    # 1. Download raw descent-format datasets (one conformer per row).
+    spice_raw = omol25.download_descent_format_dataset("spice", data_dir / "descent_format_spice_hf")
+    geom_raw = omol25.download_descent_format_dataset("geom", data_dir / "descent_format_geom_hf")
+
+    # 2. SPICE metadata (for the source-collection preset). GEOM is a single collection.
+    spice_metadata = omol25.fetch_metadata("spice", data_dir / "metadata_spice.parquet")
+
+    # 3. Deduplicate each dataset into one-molecule-per-row descent datasets.
+    spice_dedup = omol25.deduplicate(
+        spice_raw,
+        data_dir / "descent_format_spice_pubchem_dipeptides_nostereo_min5_dedup_hf",
+        metadata_path=spice_metadata,
+        keep=omol25.PRESETS["pubchem_numbered+dipeptides"],
+        collapse_stereo=True,
+        min_conformers=5,
+    )
+    geom_dedup = omol25.deduplicate(
+        geom_raw,
+        data_dir / "descent_format_geom_nostereo_min5_dedup_hf",
+        collapse_stereo=True,
+        min_conformers=5,
+    )
+
+    # 4. Combine (identical schemas) and 5. split train/test.
+    logger.info("Combining SPICE + GEOM deduplicated datasets...")
+    spice_ds = datasets.Dataset.load_from_disk(str(spice_dedup))
+    geom_ds = datasets.Dataset.load_from_disk(str(geom_dedup))
+    combined = datasets.concatenate_datasets([spice_ds, geom_ds])
+    logger.info(
+        f"Combined: {len(spice_ds):,} SPICE + {len(geom_ds):,} GEOM = {len(combined):,} molecules"
+    )
+
+    split_train_test(data_dir, combined)
+    logger.info("Done getting combined OMol25 SPICE + GEOM data.")
+
+
 def get_qca_torsion_data(
     dataset_name: str, output_dir: pathlib.Path | str, spec_name: str = "default"
 ) -> None:

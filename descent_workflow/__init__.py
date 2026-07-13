@@ -20,6 +20,7 @@ __all__ = [
     "get_data",
     "get_data_byte_dance",
     "models",
+    "omol25",
     "parameterise",
     "plot_benchmark",
     "run_yammbs_script",
