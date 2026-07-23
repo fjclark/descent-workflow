@@ -1,5 +1,6 @@
 """Train the force field. Mainly from https://github.com/jthorton/SPICE-SMEE/"""
 
+import json
 import math
 import pprint
 from pathlib import Path
@@ -60,13 +61,32 @@ def write_metrics(
 
 
 def get_datasets(config: WorkflowConfig) -> tuple[datasets.Dataset, datasets.Dataset]:
-    """Get the training and test datasets."""
-    test_dataset_names = [
-        k for k in config.filtered_data_dir.iterdir() if k.is_dir() and "test" in k.name.lower()
-    ]
-    train_dataset_names = [
-        k for k in config.filtered_data_dir.iterdir() if k.is_dir() and k not in test_dataset_names
-    ]
+    """Get the training and test datasets.
+
+    Concatenates the ``*train*`` / ``*test*`` split directories under
+    ``config.filtered_data_dir``. Backup directories (``*backup*``), temporary directories
+    (``*.tmp``) and hidden directories are skipped, so in-place retrofits (e.g.
+    ``scripts/filter_processed_omol25_by_conformer_quality.py``) that leave
+    ``*.prefilter-backup`` / ``*.preconfqualfilter-backup`` copies next to the splits are not
+    silently concatenated back into training.
+    """
+
+    def is_split_dir(path: Path) -> bool:
+        name = path.name.lower()
+        return (
+            path.is_dir()
+            and not path.name.startswith(".")
+            and "backup" not in name
+            and not name.endswith(".tmp")
+        )
+
+    split_dirs = [k for k in config.filtered_data_dir.iterdir() if is_split_dir(k)]
+    test_dataset_names = [k for k in split_dirs if "test" in k.name.lower()]
+    train_dataset_names = [k for k in split_dirs if k not in test_dataset_names]
+    logger.info(
+        f"Train split dirs: {[k.name for k in train_dataset_names]}; "
+        f"test split dirs: {[k.name for k in test_dataset_names]}"
+    )
 
     train_dataset = datasets.concatenate_datasets(
         [datasets.Dataset.load_from_disk(source) for source in train_dataset_names]
@@ -88,8 +108,6 @@ def get_param_and_attr_configs(
     #         config.parameters["Angles"]["limits"]["angle"][-1] = math.pi
     # except KeyError:
     #     pass
-    breakpoint()
-
     parameters = {}
     for k, v in config.parameters.items():
         if "include" in v:
@@ -135,6 +153,88 @@ def get_initial_torsions(force_field: smee.TensorForceField) -> torch.Tensor:
     return force_field.potentials_by_type["ProperTorsions"].parameters[:, k_col_torsion].detach()
 
 
+def save_nonfinite_entries(
+    batch: list[Any],
+    ff: smee.TensorForceField,
+    topologies: dict[str, smee.TensorTopology],
+    out_dir: Path,
+    max_saved: int = 50,
+) -> list[dict[str, Any]]:
+    """Isolate, log and save batch entries that give non-finite energy/force differences.
+
+    ``predict`` concatenates the whole batch, so a per-entry re-run is needed to attribute
+    a NaN/Inf to a specific molecule. For each entry we check ``torch.isfinite`` separately
+    on the input data (coords/energy/forces) and on the predictions (e_pred/f_pred), which
+    distinguishes a bad source datum from a diverged force field. Offending entries are
+    logged and saved to ``out_dir`` (a HF dataset plus a ``nonfinite_entries.json``
+    summary) for inspection.
+
+    Returns the list of records (one per offending entry).
+    """
+    records: list[dict[str, Any]] = []
+
+    for idx, entry in enumerate(batch):
+        smiles = entry["smiles"]
+        reasons: list[str] = []
+
+        for key in ("coords", "energy", "forces"):
+            if not torch.isfinite(entry[key]).all():
+                reasons.append(f"input:{key}")
+
+        try:
+            e_ref, e_pred, f_ref, f_pred = descent.targets.energy.predict(
+                [entry], ff, topologies, "mean"
+            )
+            for name, tensor in (
+                ("e_ref", e_ref),
+                ("e_pred", e_pred),
+                ("f_ref", f_ref),
+                ("f_pred", f_pred),
+            ):
+                if not torch.isfinite(tensor).all():
+                    reasons.append(f"pred:{name}")
+        except Exception as exc:  # noqa: BLE001
+            reasons.append(f"pred:exception:{type(exc).__name__}")
+
+        if reasons:
+            records.append({"index": idx, "smiles": smiles, "reasons": reasons})
+            logger.error(f"Non-finite entry: smiles={smiles} reasons={reasons}")
+
+    input_side = sum(1 for r in records if any(x.startswith("input:") for x in r["reasons"]))
+    if records and input_side == 0:
+        logger.error(
+            "All non-finite entries are prediction-side; the force field has likely "
+            "diverged (exploding gradients) rather than a single bad datum."
+        )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with open(out_dir / "nonfinite_entries.json", "w") as file:
+        json.dump(records, file, indent=2)
+
+    if records:
+        saved = records[:max_saved]
+        entry_dicts = [
+            {
+                "smiles": batch[r["index"]]["smiles"],
+                "coords": batch[r["index"]]["coords"].detach().cpu(),
+                "energy": batch[r["index"]]["energy"].detach().cpu(),
+                "forces": batch[r["index"]]["forces"].detach().cpu(),
+            }
+            for r in saved
+        ]
+        try:
+            descent.targets.energy.create_dataset(entry_dicts).save_to_disk(
+                str(out_dir / "dataset")
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Could not save non-finite entries as a HF dataset: {exc}")
+        logger.error(
+            f"Saved {len(saved)} non-finite entries (of {len(records)}) to {out_dir}"
+        )
+
+    return records
+
+
 def get_losses(
     config: WorkflowConfig,
     trainable: descent.train.Trainable,
@@ -142,6 +242,8 @@ def get_losses(
     dataset: datasets.Dataset,
     topologies: dict[str, smee.TensorTopology],
     initial_torsions: torch.Tensor,
+    epoch: int = 0,
+    tag: str = "train",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Compute losses for the current epoch."""
     ff = trainable.to_force_field(x)
@@ -168,6 +270,18 @@ def get_losses(
         batch_loss = (
             config.energy_weight * batch_loss_energy + config.force_weight * batch_loss_force
         )
+
+        if not torch.isfinite(batch_loss):
+            out_dir = config.fit_dir / "nonfinite_entries" / f"epoch{epoch}_{tag}"
+            logger.error(
+                f"Non-finite loss ({tag}, epoch {epoch}); isolating offending entries "
+                f"-> {out_dir}"
+            )
+            save_nonfinite_entries(cuda_batch, ff, topologies, out_dir)
+            raise RuntimeError(
+                f"Non-finite loss encountered ({tag}, epoch {epoch}). Offending entries "
+                f"saved to {out_dir} for inspection."
+            )
 
         (batch_grad,) = torch.autograd.grad(batch_loss, x, create_graph=True)
         batch_grad = batch_grad.detach()
@@ -348,6 +462,8 @@ def train(config: WorkflowConfig) -> None:
                             dataset,
                             topologies,
                             initial_torsions,
+                            epoch=i,
+                            tag=f"{dataset_name}_mb{j}",
                         )
                     )
                     if dataset_name == "train":

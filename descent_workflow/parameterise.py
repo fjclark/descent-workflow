@@ -8,6 +8,7 @@ https://github.com/jthorton/SPICE-SMEE/
 
 import copy
 import functools
+import gc
 import json
 import math
 import multiprocessing
@@ -270,40 +271,326 @@ def build_interchange(
         return None
 
 
+# The number of particle-index columns for each valence handler type. Used to
+# synthesise empty parameter maps for topologies belonging to a chunk that happened to
+# contain no interactions of a type that is present globally (see ``_FFAccumulator``).
+_VALENCE_N_COLS: dict[str, int] = {
+    "Bonds": 2,
+    "UreyBradleys": 2,
+    "Angles": 3,
+    "ProperTorsions": 4,
+    "ImproperTorsions": 4,
+}
+
+
+def _reindex_assignment_matrix(
+    matrix: torch.Tensor, local_to_global: torch.Tensor, n_global: int
+) -> torch.Tensor:
+    """Remap the parameter (column) indices of a sparse assignment matrix from a
+    chunk-local parameter ordering to a global one and set the declared number of
+    parameter columns to ``n_global``.
+
+    The row dimension (interactions for valence maps, particles for nonbonded maps) is
+    left unchanged.
+    """
+    matrix = matrix.coalesce()
+    indices = matrix.indices()
+    new_indices = torch.stack([indices[0], local_to_global[indices[1]]])
+    return torch.sparse_coo_tensor(
+        new_indices, matrix.values(), (matrix.shape[0], n_global)
+    ).coalesce()
+
+
+def _rebuild_parameter_map(
+    pmap: smee.ParameterMap, new_matrix: torch.Tensor
+) -> smee.ParameterMap:
+    """Return a copy of ``pmap`` with its assignment matrix replaced by ``new_matrix``,
+    preserving the map subclass and its other fields."""
+    if isinstance(pmap, smee.ValenceParameterMap):
+        return smee.ValenceParameterMap(pmap.particle_idxs, new_matrix)
+    if isinstance(pmap, smee.NonbondedParameterMap):
+        # exclusions / exclusion_scale_idxs index into the potential's ``attributes``
+        # (the 1-n scaling factors), which are identical across chunks for the same
+        # force field, so they need no remapping.
+        return smee.NonbondedParameterMap(
+            new_matrix, pmap.exclusions, pmap.exclusion_scale_idxs
+        )
+    raise NotImplementedError(f"unsupported parameter map type {type(pmap)}")
+
+
+def _reindex_parameter_map(
+    pmap: smee.ParameterMap, local_to_global: torch.Tensor, n_global: int
+) -> smee.ParameterMap:
+    """Return a copy of ``pmap`` whose assignment-matrix columns are remapped to the
+    global parameter ordering with width ``n_global``."""
+    new_matrix = _reindex_assignment_matrix(
+        pmap.assignment_matrix, local_to_global, n_global
+    )
+    return _rebuild_parameter_map(pmap, new_matrix)
+
+
+class _FFAccumulator:
+    """Incrementally merge the ``(TensorForceField, list[TensorTopology])`` results of
+    per-chunk :func:`smee.converters.convert_interchange` calls into a single force
+    field and topology dict with a globally consistent parameter ordering.
+
+    Only the light-weight tensor topologies are held across chunks; the heavy OpenFF
+    ``Interchange`` objects live for the duration of a single chunk only. Iterating
+    chunks in the same order as a monolithic conversion and appending newly-seen
+    parameter keys in first-seen order reproduces the monolithic output.
+    """
+
+    def __init__(self) -> None:
+        # Per potential type, the metadata shared by every chunk (everything except the
+        # ``parameters`` tensor and ``parameter_keys``), captured from the first chunk
+        # that contains the type.
+        self._meta: dict[str, dict] = {}
+        # Global first-seen parameter key ordering per potential type.
+        self._keys: dict[str, list] = {}
+        self._key_to_idx: dict[str, dict] = {}
+        # Accumulated per-key parameter rows (1-D tensors), stacked at ``finalize``.
+        self._param_rows: dict[str, list[torch.Tensor]] = {}
+        # Potential types in first-seen order (defines the final ``potentials`` order).
+        self._type_order: list[str] = []
+        # Merged topologies and their SMILES, in insertion order.
+        self._topologies: list[smee.TensorTopology] = []
+        self._smiles: list[str] = []
+
+    @staticmethod
+    def _capture_meta(potential: smee.TensorPotential) -> dict:
+        return {
+            "fn": potential.fn,
+            "parameter_cols": potential.parameter_cols,
+            "parameter_units": potential.parameter_units,
+            "attributes": (
+                None if potential.attributes is None else potential.attributes.clone()
+            ),
+            "attribute_cols": potential.attribute_cols,
+            "attribute_units": potential.attribute_units,
+            "exceptions": potential.exceptions,
+        }
+
+    def _assert_meta_matches(
+        self, p_type: str, potential: smee.TensorPotential
+    ) -> None:
+        meta = self._meta[p_type]
+        assert potential.fn == meta["fn"], f"inconsistent fn for {p_type} across chunks"
+        assert (
+            potential.parameter_cols == meta["parameter_cols"]
+        ), f"inconsistent parameter_cols for {p_type} across chunks"
+        assert (
+            potential.parameter_units == meta["parameter_units"]
+        ), f"inconsistent parameter_units for {p_type} across chunks"
+        assert (
+            potential.attribute_cols == meta["attribute_cols"]
+        ), f"inconsistent attribute_cols for {p_type} across chunks"
+        assert (
+            potential.attribute_units == meta["attribute_units"]
+        ), f"inconsistent attribute_units for {p_type} across chunks"
+        if meta["attributes"] is None:
+            assert (
+                potential.attributes is None
+            ), f"inconsistent attributes for {p_type} across chunks"
+        else:
+            assert potential.attributes is not None and torch.allclose(
+                potential.attributes, meta["attributes"]
+            ), f"inconsistent attributes for {p_type} across chunks"
+
+    def add_chunk(
+        self,
+        force_field: smee.TensorForceField,
+        topologies: list[smee.TensorTopology],
+        smiles: list[str],
+    ) -> None:
+        assert (
+            force_field.v_sites is None
+        ), "chunked parameterisation does not support force fields with virtual sites"
+
+        local_to_global: dict[str, torch.Tensor] = {}
+
+        for potential in force_field.potentials:
+            assert potential.exceptions is None, (
+                "chunked parameterisation does not support parameter exceptions "
+                f"(found on {potential.type})"
+            )
+
+            p_type = potential.type
+
+            if p_type not in self._meta:
+                self._meta[p_type] = self._capture_meta(potential)
+                self._keys[p_type] = []
+                self._key_to_idx[p_type] = {}
+                self._param_rows[p_type] = []
+                self._type_order.append(p_type)
+            else:
+                self._assert_meta_matches(p_type, potential)
+
+            keys = self._keys[p_type]
+            key_to_idx = self._key_to_idx[p_type]
+            rows = self._param_rows[p_type]
+
+            mapping = torch.empty(len(potential.parameter_keys), dtype=torch.int64)
+            for i, key in enumerate(potential.parameter_keys):
+                if key not in key_to_idx:
+                    key_to_idx[key] = len(keys)
+                    keys.append(key)
+                    rows.append(potential.parameters[i].clone())
+                mapping[i] = key_to_idx[key]
+            local_to_global[p_type] = mapping
+
+        assert len(topologies) == len(smiles), "mismatched topologies and smiles"
+
+        for topology, smi in zip(topologies, smiles, strict=True):
+            assert (
+                topology.v_sites is None and topology.constraints is None
+            ), "chunked parameterisation does not support v-sites or constraints"
+            topology.parameters = {
+                p_type: _reindex_parameter_map(
+                    pmap, local_to_global[p_type], len(self._keys[p_type])
+                )
+                for p_type, pmap in topology.parameters.items()
+            }
+            self._topologies.append(topology)
+            self._smiles.append(smi)
+
+    def _empty_valence_map(
+        self, p_type: str, n_global: int
+    ) -> smee.ValenceParameterMap:
+        assert p_type in _VALENCE_N_COLS, (
+            f"topology is missing the non-valence potential {p_type!r}; cannot "
+            "synthesise an empty parameter map for it"
+        )
+        # Match the representation smee produces for a handler with no interactions:
+        # a 1-D empty ``particle_idxs`` and an all-zero float64 assignment matrix.
+        empty_matrix = torch.sparse_coo_tensor(
+            torch.zeros((2, 0), dtype=torch.int64),
+            torch.zeros(0, dtype=torch.float64),
+            (0, n_global),
+        ).coalesce()
+        return smee.ValenceParameterMap(torch.tensor([]), empty_matrix)
+
+    def finalize(
+        self,
+    ) -> tuple[smee.TensorForceField, dict[str, smee.TensorTopology]]:
+        n_global = {p_type: len(self._keys[p_type]) for p_type in self._type_order}
+
+        potentials = [
+            smee.TensorPotential(
+                type=p_type,
+                fn=self._meta[p_type]["fn"],
+                parameters=torch.stack(self._param_rows[p_type]),
+                parameter_keys=self._keys[p_type],
+                parameter_cols=self._meta[p_type]["parameter_cols"],
+                parameter_units=self._meta[p_type]["parameter_units"],
+                attributes=self._meta[p_type]["attributes"],
+                attribute_cols=self._meta[p_type]["attribute_cols"],
+                attribute_units=self._meta[p_type]["attribute_units"],
+                exceptions=self._meta[p_type]["exceptions"],
+            )
+            for p_type in self._type_order
+        ]
+
+        # Column indices are already global; only the declared width may still be stale
+        # (it was set to the running global count when the topology's chunk was merged).
+        for topology in self._topologies:
+            new_params = {}
+            for p_type in self._type_order:
+                if p_type in topology.parameters:
+                    pmap = topology.parameters[p_type]
+                    width = pmap.assignment_matrix.shape[1]
+                    new_params[p_type] = _reindex_parameter_map(
+                        pmap, torch.arange(width, dtype=torch.int64), n_global[p_type]
+                    )
+                else:
+                    new_params[p_type] = self._empty_valence_map(
+                        p_type, n_global[p_type]
+                    )
+            topology.parameters = new_params
+
+        force_field = smee.TensorForceField(potentials)
+        topologies = dict(zip(self._smiles, self._topologies, strict=True))
+        return force_field, topologies
+
+
 def apply_parameters(
-    unique_smiles: list[str], *force_field_paths: str, linearise_harm: bool = False
+    unique_smiles: list[str],
+    *force_field_paths: str,
+    linearise_harm: bool = False,
+    chunk_size: int = 5000,
 ) -> tuple[smee.TensorForceField, dict[str, smee.TensorTopology]]:
-    build_interchange_fn = functools.partial(build_interchange, force_field_paths=force_field_paths)
+    """Parameterise ``unique_smiles`` with the given force field(s).
+
+    To keep peak memory bounded for large datasets, the SMILES are processed in chunks
+    of ``chunk_size``: only one chunk's worth of heavy OpenFF ``Interchange`` objects is
+    resident at a time. The per-chunk conversions are merged into a single force field
+    and topology dict with a globally consistent parameter ordering, producing output
+    equivalent to converting every molecule in a single call.
+    """
+    build_interchange_fn = functools.partial(
+        build_interchange, force_field_paths=force_field_paths
+    )
+    chunk_size = max(1, chunk_size)
+    accumulator = _FFAccumulator()
+
+    n_molecules = len(unique_smiles)
+    n_chunks = math.ceil(n_molecules / chunk_size)
 
     with multiprocessing.get_context("spawn").Pool() as pool:
-        interchanges = list(
-            pool.imap(
-                build_interchange_fn,
-                tqdm.tqdm(
-                    unique_smiles,
-                    total=len(unique_smiles),
-                    desc="building interchanges",
-                ),
-            )
+        chunk_bar = tqdm.tqdm(
+            range(0, n_molecules, chunk_size),
+            total=n_chunks,
+            desc="parameterising chunks",
+            unit="chunk",
+            position=0,
         )
+        for chunk_idx, start in enumerate(chunk_bar):
+            chunk_smiles = unique_smiles[start : start + chunk_size]
+            # Inner, per-molecule bar so progress is visible while a (large) chunk of
+            # interchanges is being built, rather than only ticking once per chunk.
+            interchanges = list(
+                tqdm.tqdm(
+                    pool.imap(build_interchange_fn, chunk_smiles),
+                    total=len(chunk_smiles),
+                    desc=f"  building interchanges (chunk {chunk_idx + 1}/{n_chunks})",
+                    unit="mol",
+                    position=1,
+                    leave=False,
+                )
+            )
 
-    # Filter out None interchanges
-    unique_smiles_filtered: list[str] = [
-        s for s, i in zip(unique_smiles, interchanges, strict=True) if i is not None
-    ]
-    interchanges_filtered: list[Interchange] = [
-        i for s, i in zip(unique_smiles, interchanges, strict=True) if i is not None
-    ]
+            kept_smiles = [
+                s
+                for s, i in zip(chunk_smiles, interchanges, strict=True)
+                if i is not None
+            ]
+            kept_interchanges: list[Interchange] = [
+                i for i in interchanges if i is not None
+            ]
+            del interchanges
 
-    force_field, topologies = smee.converters.convert_interchange(interchanges_filtered)
+            if not kept_interchanges:
+                continue
+
+            force_field_chunk, topologies_chunk = smee.converters.convert_interchange(
+                kept_interchanges
+            )
+            # Free this chunk's Interchanges before building the next chunk.
+            del kept_interchanges
+            gc.collect()
+
+            accumulator.add_chunk(force_field_chunk, topologies_chunk, kept_smiles)
+            del force_field_chunk, topologies_chunk
+
+    force_field, topologies = accumulator.finalize()
 
     if linearise_harm:
         force_field = linearise_harmonics_force_field(force_field, device_type="cpu")
-        topologies = [
-            linearise_harmonics_topology(topology, device_type="cpu") for topology in topologies
-        ]
+        topologies = {
+            smiles: linearise_harmonics_topology(topology, device_type="cpu")
+            for smiles, topology in topologies.items()
+        }
 
-    return force_field, dict(zip(unique_smiles_filtered, topologies, strict=True))
+    return force_field, topologies
 
 
 def create_torch_ff_and_top(config: WorkflowConfig) -> None:
@@ -330,6 +617,7 @@ def create_torch_ff_and_top(config: WorkflowConfig) -> None:
         unique_smiles_sorted,
         *[str(config.starting_force_field_path)],
         linearise_harm=config.linearise_harm,
+        chunk_size=config.parameterise_chunk_size,
     )
 
     torch_path = config.torch_ffs_and_tops_path

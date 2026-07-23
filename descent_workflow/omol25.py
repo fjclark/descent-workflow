@@ -207,6 +207,16 @@ def _strip_stereo(smiles_col: pa.ChunkedArray) -> pa.ChunkedArray:
     return s
 
 
+def _multi_molecule_mask(smiles_col: pa.Array) -> pa.Array:
+    """Boolean keep-mask dropping multi-molecule (``.``-joined) SMILES.
+
+    Chunked parameterisation cannot handle the rigid constraints / virtual sites that
+    OpenFF assigns to multi-component records (e.g. solvated or ion-pair entries, which
+    pull in water/ions), so these are dropped here.
+    """
+    return pc.invert(pc.match_substring(smiles_col, "."))
+
+
 def _threshold_stats(grp_sizes: np.ndarray, keep_mol: np.ndarray, min_conformers: int) -> dict:
     """Stats for dropping molecules with fewer than ``min_conformers`` conformers."""
     removed = grp_sizes[~keep_mol]
@@ -343,6 +353,14 @@ def deduplicate(
         f"mean={grp_sizes.mean():.2f} max={grp_sizes.max()})"
     )
 
+    # --- drop multi-molecule (`.`-joined) records ---
+    keep_single = _multi_molecule_mask(out_table.column("smiles"))
+    n_multi = pc.sum(pc.cast(pc.invert(keep_single), pa.int64())).as_py()
+    if n_multi:
+        out_table = out_table.filter(keep_single)
+        grp_sizes = grp_sizes[keep_single.to_numpy(zero_copy_only=False)]
+        logger.info(f"  dropped {n_multi:,} multi-molecule SMILES; {out_table.num_rows:,} molecules remain")
+
     # --- optional minimum-conformers-per-molecule filter ---
     if min_conformers > 1:
         keep_mol = grp_sizes >= min_conformers
@@ -364,6 +382,11 @@ def deduplicate(
         logger.info(f"  stats -> {stats_path}")
 
     t0 = time.time()
-    Dataset(out_table).save_to_disk(str(out_path))
+    # Set the torch format (mirroring descent.targets.energy.create_dataset) so that
+    # indexing returns tensors, not Python lists. The format is persisted in state.json
+    # and restored on load, and propagates through concatenate/filter/split downstream.
+    ds = Dataset(out_table)
+    ds.set_format("torch")
+    ds.save_to_disk(str(out_path))
     logger.info(f"  saved -> {out_path} in {time.time() - t0:.1f}s")
     return out_path

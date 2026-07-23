@@ -215,6 +215,306 @@ def process_dataset_spice2(data_dir: pathlib.Path) -> None:
             json.dump(list(unique_smiles), file)
 
 
+def get_rms(array: npt.NDArray[np.floating[Any]]) -> float:
+    """Root mean square of all elements of an array."""
+    result: float = float(np.sqrt(np.mean(array**2)))
+    return result
+
+
+def filter_dataset_by_forces(
+    dataset: datasets.Dataset,
+    percentile: float = 95,
+    out_dir: pathlib.Path | str | None = None,
+    cutoff: float | None = None,
+) -> tuple[datasets.Dataset, dict[str, Any]]:
+    """Remove entries with non-finite or high RMS forces from an in-memory dataset.
+
+    Mirrors :func:`filter_spice2_dataset_by_forces` (per-entry RMS force above a
+    percentile cutoff) but operates on an in-memory ``datasets.Dataset`` and adds an
+    explicit non-finite (NaN/Inf) guard on the ``coords``/``energy``/``forces`` values.
+    The percentile filter alone does not catch these because ``NaN > cutoff`` is
+    ``False``.
+
+    Args:
+        dataset: dataset with ``smiles``/``coords``/``energy``/``forces`` columns.
+        percentile: RMS-force percentile above which entries are removed. Ignored when
+            ``cutoff`` is provided.
+        out_dir: if given, write ``force_filter_report.json`` and an RMS-force boxplot
+            for inspection.
+        cutoff: pre-computed RMS-force cutoff in kcal/(mol Angstrom). If ``None`` it is
+            computed from ``percentile`` over the finite entries of this dataset. Pass a
+            shared cutoff to filter several splits consistently.
+
+    Returns:
+        ``(filtered_dataset, report)``. ``report`` records the cutoff, the input/output
+        counts and the removed / non-finite SMILES.
+    """
+    data_df = dataset.to_pandas()
+
+    def is_finite_row(row: Any) -> bool:
+        for col in ("coords", "energy", "forces"):
+            if not np.all(np.isfinite(np.asarray(row[col], dtype=float))):
+                return False
+        return True
+
+    finite_mask = data_df.apply(is_finite_row, axis=1)
+    nonfinite_smiles = data_df.loc[~finite_mask, "smiles"].tolist()
+    if nonfinite_smiles:
+        logger.warning(
+            f"Removing {len(nonfinite_smiles)} entries with non-finite "
+            "coords/energy/forces"
+        )
+
+    finite_df = data_df[finite_mask].copy()
+    finite_df["rms_forces"] = finite_df["forces"].apply(
+        lambda x: get_rms(np.asarray(x, dtype=float))
+    )
+
+    if cutoff is None:
+        cutoff = float(np.percentile(finite_df["rms_forces"], percentile))
+    logger.info(
+        f"RMS force cutoff ({percentile}th percentile): "
+        f"{cutoff:.2f} kcal/(mol Angstrom)"
+    )
+
+    high_force_smiles = finite_df.loc[
+        finite_df["rms_forces"] > cutoff, "smiles"
+    ].tolist()
+    logger.info(f"Removing {len(high_force_smiles)} entries with high RMS forces")
+
+    remove_smiles = set(nonfinite_smiles) | set(high_force_smiles)
+    filtered = dataset.filter(lambda x: x["smiles"] not in remove_smiles)
+
+    report: dict[str, Any] = {
+        "percentile": percentile,
+        "cutoff_kcal_per_mol_angstrom": cutoff,
+        "n_input": len(dataset),
+        "n_nonfinite_removed": len(nonfinite_smiles),
+        "n_high_force_removed": len(high_force_smiles),
+        "n_output": len(filtered),
+        "nonfinite_smiles": nonfinite_smiles,
+        "high_force_smiles": high_force_smiles,
+    }
+    logger.info(
+        f"Filtered dataset by forces: {report['n_input']} -> {report['n_output']} "
+        f"entries ({report['n_nonfinite_removed']} non-finite, "
+        f"{report['n_high_force_removed']} high-force)"
+    )
+
+    if out_dir is not None:
+        out_dir = pathlib.Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        with open(out_dir / "force_filter_report.json", "w") as file:
+            json.dump(report, file, indent=2)
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.boxplot(x=finite_df["rms_forces"], ax=ax)
+        ax.axvline(x=cutoff, color="red", linestyle="--", alpha=0.5)
+        ax.text(cutoff, 0.4, f"{percentile}th", color="red", rotation=90, va="center")
+        ax.set_xlabel(r"RMS Forces (kcal mol$^{-1}$ $\mathrm{\AA}^{-1})$")
+        ax.set_title("Distribution of RMS Forces")
+        fig.savefig(str(out_dir / "rms_forces.png"), dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
+    return filtered, report
+
+
+def _min_interatomic_dist(coords: npt.NDArray[np.floating[Any]]) -> npt.NDArray[np.float64]:
+    """Smallest pairwise atom distance per conformer.
+
+    ``coords`` is ``(n_conf, n_atoms, 3)``; returns ``(n_conf,)``. Conformers are processed
+    in memory-bounded chunks so large molecules with many conformers do not blow up the
+    ``(n_conf, n_atoms, n_atoms)`` distance tensor.
+    """
+    n_conf, n_atoms, _ = coords.shape
+    out = np.empty(n_conf, dtype=np.float64)
+    idx = np.arange(n_atoms)
+    chunk = max(1, int(2_000_000 // (n_atoms * n_atoms + 1)))
+    for start in range(0, n_conf, chunk):
+        block = coords[start : start + chunk]
+        diff = block[:, :, None, :] - block[:, None, :, :]
+        dist = np.sqrt((diff**2).sum(axis=3))
+        dist[:, idx, idx] = np.inf
+        out[start : start + chunk] = dist.min(axis=(1, 2))
+    return out
+
+
+def _filter_row_by_conformer_quality(
+    row: dict[str, Any], *, max_atom_force: float, min_interatomic_dist: float
+) -> dict[str, Any]:
+    """Rewrite one molecule row, keeping only conformers that pass the quality gates.
+
+    A conformer is kept iff its ``coords``/``energy``/``forces`` are all finite, its maximum
+    per-atom force is ``<= max_atom_force`` (kcal/mol/Angstrom) and its smallest interatomic
+    distance is ``>= min_interatomic_dist`` (Angstrom). Returns the rewritten flat
+    ``coords``/``energy``/``forces`` plus ``_n_conf_before``/``_n_kept`` bookkeeping columns.
+    """
+    energy = np.asarray(row["energy"], dtype=np.float64)
+    n_conf = int(energy.shape[0])
+    coords = np.asarray(row["coords"], dtype=np.float64)
+    n_atoms = coords.size // (3 * n_conf) if n_conf else 0
+    if n_conf == 0 or n_atoms == 0:
+        return {"coords": [], "energy": [], "forces": [], "_n_conf_before": n_conf, "_n_kept": 0}
+
+    c = coords.reshape(n_conf, n_atoms, 3)
+    f = np.asarray(row["forces"], dtype=np.float64).reshape(n_conf, n_atoms, 3)
+
+    finite = (
+        np.isfinite(c).all(axis=(1, 2))
+        & np.isfinite(f).all(axis=(1, 2))
+        & np.isfinite(energy)
+    )
+    max_force = np.linalg.norm(f, axis=2).max(axis=1)
+    min_dist = _min_interatomic_dist(c)
+    keep = finite & (max_force <= max_atom_force) & (min_dist >= min_interatomic_dist)
+
+    return {
+        "coords": c[keep].reshape(-1).astype(np.float32).tolist(),
+        "energy": energy[keep].astype(np.float32).tolist(),
+        "forces": f[keep].reshape(-1).astype(np.float32).tolist(),
+        "_n_conf_before": n_conf,
+        "_n_kept": int(keep.sum()),
+    }
+
+
+def _plot_conformer_quality(
+    dataset: datasets.Dataset,
+    max_atom_force: float,
+    min_interatomic_dist: float,
+    out_dir: pathlib.Path,
+    max_conformers: int = 200_000,
+) -> None:
+    """Histogram per-conformer max atom force and min interatomic distance (subsampled)."""
+    step = max(1, len(dataset) // 5000)
+    maxf: list[float] = []
+    mind: list[float] = []
+    for i in range(0, len(dataset), step):
+        row = dataset[i]
+        energy = np.asarray(row["energy"], dtype=np.float64)
+        n_conf = int(energy.shape[0])
+        if n_conf == 0:
+            continue
+        coords = np.asarray(row["coords"], dtype=np.float64)
+        n_atoms = coords.size // (3 * n_conf)
+        if n_atoms < 2:
+            continue
+        c = coords.reshape(n_conf, n_atoms, 3)
+        f = np.asarray(row["forces"], dtype=np.float64).reshape(n_conf, n_atoms, 3)
+        maxf.extend(np.linalg.norm(f, axis=2).max(axis=1).tolist())
+        mind.extend(_min_interatomic_dist(c).tolist())
+        if len(maxf) >= max_conformers:
+            break
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    axes[0].hist(np.clip(maxf, 0, 3 * max_atom_force), bins=100)
+    axes[0].axvline(max_atom_force, color="red", linestyle="--", alpha=0.6)
+    axes[0].set_xlabel(r"max atom force (kcal mol$^{-1}$ $\mathrm{\AA}^{-1}$)")
+    axes[0].set_ylabel("conformers")
+    axes[0].set_title("Per-conformer max atom force")
+    axes[1].hist(np.clip(mind, 0, 2.0), bins=100)
+    axes[1].axvline(min_interatomic_dist, color="red", linestyle="--", alpha=0.6)
+    axes[1].set_xlabel(r"min interatomic distance ($\mathrm{\AA}$)")
+    axes[1].set_ylabel("conformers")
+    axes[1].set_title("Per-conformer min interatomic distance")
+    fig.tight_layout()
+    fig.savefig(str(out_dir / "conformer_quality.png"), dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
+def filter_conformers_by_quality(
+    dataset: datasets.Dataset,
+    max_atom_force: float = 250.0,
+    min_interatomic_dist: float = 0.9,
+    min_conformers: int = 5,
+    out_dir: pathlib.Path | str | None = None,
+    num_proc: int | None = None,
+) -> tuple[datasets.Dataset, dict[str, Any]]:
+    """Drop individual off-equilibrium conformers a harmonic FF cannot represent.
+
+    Operates *per conformer* (unlike :func:`filter_dataset_by_forces`, which drops whole
+    molecules): for each one-molecule-per-row entry it keeps only the conformers whose
+    ``coords``/``energy``/``forces`` are finite, whose maximum per-atom force is
+    ``<= max_atom_force`` (kcal/mol/Angstrom) and whose smallest interatomic distance is
+    ``>= min_interatomic_dist`` (Angstrom), rewriting the row's flat ``coords``/``energy``/
+    ``forces`` arrays from the survivors. Molecules left with ``< min_conformers`` conformers
+    are dropped entirely.
+
+    The force gate is calibrated to the SPICE envelope (SPICE per-conformer max atom force
+    p99 ~ 200 kcal/mol/Angstrom, vs a broad off-equilibrium tail to ~1000+ in the OMol25 GEOM
+    data). The distance gate is a topology-free catch for pathologically compressed bonds (no
+    two atoms in a real organic molecule sit < 0.9 Angstrom apart). Because only conformers
+    are removed the SMILES set is essentially unchanged, so an existing parameterisation stays
+    valid without re-running it.
+
+    Args:
+        dataset: one-molecule-per-row dataset with ``smiles``/``coords``/``energy``/``forces``.
+        max_atom_force: keep conformers with max per-atom force at or below this.
+        min_interatomic_dist: keep conformers with min interatomic distance at or above this.
+        min_conformers: drop molecules left with fewer conformers than this.
+        out_dir: if given, write ``conformer_quality_filter_report.json`` and a diagnostic plot.
+        num_proc: processes for the per-row rewrite (passed to ``datasets.Dataset.map``).
+
+    Returns:
+        ``(filtered_dataset, report)``.
+    """
+    logger.info(
+        f"Filtering conformers by quality: max_atom_force={max_atom_force} kcal/(mol Angstrom), "
+        f"min_interatomic_dist={min_interatomic_dist} Angstrom, min_conformers={min_conformers}"
+    )
+    mapped = dataset.map(
+        _filter_row_by_conformer_quality,
+        fn_kwargs={
+            "max_atom_force": max_atom_force,
+            "min_interatomic_dist": min_interatomic_dist,
+        },
+        num_proc=num_proc,
+        desc="Filtering conformers by quality",
+    )
+
+    n_conf_before_col = np.asarray(mapped["_n_conf_before"], dtype=np.int64)
+    n_kept_col = np.asarray(mapped["_n_kept"], dtype=np.int64)
+    keep_mol = n_kept_col >= min_conformers
+
+    n_conf_before = int(n_conf_before_col.sum())
+    n_conf_after_gate = int(n_kept_col.sum())
+    n_conf_final = int(n_kept_col[keep_mol].sum())
+
+    filtered = mapped.filter(
+        lambda r: r["_n_kept"] >= min_conformers, desc="Dropping sparse molecules"
+    ).remove_columns(["_n_conf_before", "_n_kept"])
+
+    report: dict[str, Any] = {
+        "max_atom_force_kcal_per_mol_angstrom": max_atom_force,
+        "min_interatomic_dist_angstrom": min_interatomic_dist,
+        "min_conformers": min_conformers,
+        "n_molecules_in": len(dataset),
+        "n_molecules_out": len(filtered),
+        "n_molecules_dropped": int((~keep_mol).sum()),
+        "n_conformers_in": n_conf_before,
+        "n_conformers_passing_gates": n_conf_after_gate,
+        "n_conformers_out": n_conf_final,
+        "n_conformers_removed": n_conf_before - n_conf_final,
+        "frac_conformers_removed": (
+            (n_conf_before - n_conf_final) / n_conf_before if n_conf_before else 0.0
+        ),
+    }
+    logger.info(
+        f"Conformer quality filter: {report['n_molecules_in']:,} -> "
+        f"{report['n_molecules_out']:,} molecules ({report['n_molecules_dropped']:,} dropped); "
+        f"{n_conf_before:,} -> {n_conf_final:,} conformers "
+        f"({report['frac_conformers_removed'] * 100:.1f}% removed)"
+    )
+
+    if out_dir is not None:
+        out_dir = pathlib.Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        with open(out_dir / "conformer_quality_filter_report.json", "w") as file:
+            json.dump(report, file, indent=2)
+        _plot_conformer_quality(dataset, max_atom_force, min_interatomic_dist, out_dir)
+
+    return filtered, report
+
+
 def filter_spice2_dataset_by_forces(data_dir: pathlib.Path) -> None:
     """Filter the SPICE dataset by forces and save it to disk."""
     logger.info("Filtering SPICE dataset by forces...")
@@ -225,10 +525,6 @@ def filter_spice2_dataset_by_forces(data_dir: pathlib.Path) -> None:
 
     dataset = datasets.load_from_disk(input_dir)
     data_df = dataset.to_pandas()
-
-    def get_rms(array: npt.NDArray[np.floating[Any]]) -> float:
-        result: float = float(np.sqrt(np.mean(array**2)))
-        return result
 
     data_df["rms_forces"] = data_df["forces"].apply(lambda x: get_rms(np.array(x)))
 
@@ -435,6 +731,13 @@ def get_data_omol25_combined(data_dir: pathlib.Path | str) -> None:
     logger.info(
         f"Combined: {len(spice_ds):,} SPICE + {len(geom_ds):,} GEOM = {len(combined):,} molecules"
     )
+
+    # 4b. Drop off-equilibrium conformers a harmonic FF cannot represent. The OMol25 GEOM
+    # portion is genuine but aggressively off-equilibrium (bonds compressed to <0.9 Angstrom,
+    # per-atom forces far above the SPICE envelope), which makes force-matching diverge to
+    # NaN. Filter per conformer (keeping the good conformers of each molecule) rather than by
+    # whole-molecule RMS force, which is a relative cut that leaves the distorted geometries in.
+    combined, _ = filter_conformers_by_quality(combined, out_dir=data_dir)
 
     split_train_test(data_dir, combined)
     logger.info("Done getting combined OMol25 SPICE + GEOM data.")

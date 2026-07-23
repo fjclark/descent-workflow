@@ -42,6 +42,15 @@ class WorkflowConfig(BaseModel):
 
     batch_size: int = Field(default=500, description="Batch size for training.")
 
+    parameterise_chunk_size: int = Field(
+        default=5_000,
+        description=(
+            "Number of unique molecules whose Interchanges are held in memory at once "
+            "during parameterisation. Lower this if parameterisation runs out of RAM "
+            "(e.g. large datasets like OMOL25)."
+        ),
+    )
+
     minibatch_size: int = Field(default=256, description="Minibatch size for training.")
 
     n_epochs: int = Field(default=1000, description="Number of epochs for training.")

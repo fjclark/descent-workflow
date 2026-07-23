@@ -122,6 +122,7 @@ rule reparameterize_with_bespoke_types:
             unique_smiles_sorted,
             str(workflow_config.effective_ff_path),
             linearise_harm=workflow_config.linearise_harm,
+            chunk_size=workflow_config.parameterise_chunk_size,
         )
         
         # Save the new torch force field and topologies

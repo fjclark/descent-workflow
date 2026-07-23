@@ -6,7 +6,7 @@ get_data_fn: descent_workflow.get_data.get_data_omol25_combined
 get_data_output_smiles: data/omol25_spice_geom/smiles_test_train.json
 starting_force_field_path: output_ff/spice2_linearised_harmonics_minibatch_rerun_angle_ring_info.offxml
 filter_and_cluster_fn: descent_workflow.filter.filter_spice2
-batch_size: 600
+batch_size: 200
 n_epochs: 5
 learning_rate: 0.02
 energy_weight: 1.0
