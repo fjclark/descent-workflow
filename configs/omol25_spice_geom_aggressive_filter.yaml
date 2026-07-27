@@ -1,11 +1,22 @@
 version: "0.1.0"
-experiment_name: omol25_spice_geom_from_angle_ring_info
-experiment_description: Fit to combined reprocessed OMol25 SPICE + GEOM (stereo-collapsed, min 5 conformers) starting from the angle_ring_info FF, with linearised harmonics and minibatching, and no new type generation.
+experiment_name: omol25_spice_geom_aggressive_filter
+experiment_description: Fit to combined reprocessed OMol25 SPICE + GEOM (stereo-collapsed, min 5 conformers) starting from the angle_ring_info FF, with linearised harmonics and minibatching, and no new type generation. Aggressive, source-agnostic conformer filtering applied to all input data - a structural SMILES-quality filter (keep OK only) plus per-conformer max-force / RMS-force / relative-energy / min-distance gates tuned to remove outliers well beyond the SPICE envelope.
 data_dir: data/omol25_spice_geom
 get_data_fn: descent_workflow.get_data.get_data_omol25_combined
 get_data_output_smiles: data/omol25_spice_geom/smiles_test_train.json
 starting_force_field_path: output_ff/spice2_linearised_harmonics_minibatch_rerun_angle_ring_info.offxml
 filter_and_cluster_fn: descent_workflow.filter.filter_spice2
+# Structural SMILES-quality filter: keep only conformers classified "OK"
+# (drops orphaned-H, multi-fragment, radical, charge-imbalance, unusual-element records).
+smiles_quality_keep: ["OK"]
+# Per-conformer force/energy quality filter, applied to all input data. Starting aggressive
+# values calibrated to the SPICE envelope; review data/omol25_spice_geom/filter_plots and tune.
+conformer_filter:
+  max_atom_force: 150.0        # kcal/(mol Angstrom)
+  max_rms_force: 60.0          # kcal/(mol Angstrom)
+  max_relative_energy: 100.0   # kcal/mol, vs each molecule's lowest conformer
+  min_interatomic_dist: 0.95   # Angstrom
+  min_conformers: 5
 batch_size: 200
 n_epochs: 5
 learning_rate: 0.02

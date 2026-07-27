@@ -37,7 +37,7 @@ rule get_data:
         workflow_config.get_data_output_smiles
     run:
         get_data_fn = get_fn(workflow_config.get_data_fn)
-        get_data_fn(workflow_config.data_dir)
+        get_data_fn(workflow_config.data_dir, workflow_config)
         workflow_config.to_file(workflow_config.data_dir / "workflow_config.yaml")
 
 rule parameterise:

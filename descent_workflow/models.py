@@ -11,6 +11,39 @@ from pydantic import BaseModel, Field, validator, model_validator
 __version__ = version("descent-workflow")
 
 
+class ConformerFilterConfig(BaseModel):
+    """Thresholds for the per-conformer force/energy quality filter.
+
+    Applied consistently to *all* input data (every source, current and future). Any
+    threshold left as ``None`` disables that individual gate. Calibrate against the SPICE
+    distribution (see the diagnostic plots) so the SPICE bulk is kept but conformers with
+    forces/energies far beyond it are removed.
+    """
+
+    max_atom_force: Optional[float] = Field(
+        default=None,
+        description="Drop conformers with a max per-atom force above this, kcal/(mol Angstrom).",
+    )
+    max_rms_force: Optional[float] = Field(
+        default=None,
+        description="Drop conformers with an RMS force above this, kcal/(mol Angstrom).",
+    )
+    max_relative_energy: Optional[float] = Field(
+        default=None,
+        description=(
+            "Drop conformers whose energy minus their molecule's lowest conformer energy "
+            "exceeds this, kcal/mol (a strain cut)."
+        ),
+    )
+    min_interatomic_dist: float = Field(
+        default=0.9,
+        description="Drop conformers with a smaller min interatomic distance, Angstrom.",
+    )
+    min_conformers: int = Field(
+        default=5, description="Drop molecules left with fewer conformers than this."
+    )
+
+
 class WorkflowConfig(BaseModel):
     """Configuration for the workflow."""
 
@@ -89,6 +122,23 @@ class WorkflowConfig(BaseModel):
         },
         description="Trainable parameters for the force field.",
     )
+    conformer_filter: Optional[ConformerFilterConfig] = Field(
+        default=None,
+        description=(
+            "Per-conformer force/energy quality filter thresholds, applied to all input "
+            "data. If None, the data-prep function's built-in defaults are used."
+        ),
+    )
+
+    smiles_quality_keep: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "SMILES-quality (structural) filter: the classifications to KEEP from the "
+            "per-conformer smiles_quality CSVs (e.g. ['OK'] or ['OK', 'WARNING']). If "
+            "None, the structural filter is disabled."
+        ),
+    )
+
     type_generation_protocol_name: Optional[str] = Field(
         default=None,
         description=(

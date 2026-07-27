@@ -35,6 +35,7 @@ from typing import Callable
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.csv as pacsv
 import pyarrow.parquet as pq
 from datasets import Dataset, load_dataset, load_from_disk
 from loguru import logger
@@ -180,6 +181,42 @@ def _build_keep_mask(
     return mask
 
 
+def _build_quality_mask(
+    quality_csv: pathlib.Path | str,
+    raw_table: pa.Table,
+    n_rows: int,
+    keep_classifications: list[str],
+) -> pa.Array:
+    """Boolean mask over raw rows whose SMILES-quality ``classification`` is kept.
+
+    ``quality_csv`` is the per-conformer ``smiles_quality`` CSV (one row per raw conformer,
+    ordered by ``index`` and thus row-aligned with the raw data). Only the ``smiles`` and
+    ``classification`` columns are read (the files are multi-GB). Alignment is asserted on
+    ``smiles`` before the mask is trusted, mirroring :func:`_build_keep_mask`.
+    """
+    table = pacsv.read_csv(
+        str(quality_csv),
+        convert_options=pacsv.ConvertOptions(include_columns=["smiles", "classification"]),
+    )
+    assert table.num_rows == n_rows, "smiles_quality CSV row count != data row count"
+    # Cast to large_string (int64 offsets) before combining: concatenating millions of long
+    # SMILES overflows 32-bit string offsets otherwise.
+    a = pc.cast(table.column("smiles"), pa.large_string()).combine_chunks()
+    b = pc.cast(raw_table.column("smiles"), pa.large_string()).combine_chunks()
+    assert pc.all(pc.equal(a, b)).as_py(), "smiles_quality CSV not row-aligned with data"
+
+    cls = table.column("classification")
+    mask = pc.is_in(cls, value_set=pa.array(sorted(set(keep_classifications))))
+    n_keep = pc.sum(pc.cast(mask, pa.int64())).as_py()
+    logger.info(
+        f"  smiles-quality filter: keeping classifications {sorted(set(keep_classifications))}, "
+        f"{n_keep:,}/{n_rows:,} conformers"
+    )
+    # Return a single (contiguous) BooleanArray so it can be safely AND-ed with the
+    # source-collection mask regardless of chunk boundaries.
+    return mask.combine_chunks() if isinstance(mask, pa.ChunkedArray) else mask
+
+
 def _regroup_list_column(col: pa.ChunkedArray, group_starts: np.ndarray, n_rows: int) -> pa.Array:
     """Merge per-row list values into per-group lists via new offsets only."""
     la = col.combine_chunks()  # single ListArray, values in sorted-row order
@@ -251,13 +288,17 @@ def deduplicate(
     keep: Callable[[str], bool] | None = None,
     collapse_stereo: bool = False,
     min_conformers: int = 1,
+    quality_csv: pathlib.Path | str | None = None,
+    keep_classifications: list[str] | None = None,
 ) -> pathlib.Path:
     """Reprocess a raw descent-format dataset so each unique SMILES is a single row.
 
     Sorts the table by ``smiles`` so every molecule's rows are contiguous, then builds the
     merged list columns by recomputing offsets over the flat value buffers. Optionally
-    filters conformers by source collection (``keep`` + ``metadata_path``), collapses
-    stereochemistry, and drops molecules with fewer than ``min_conformers`` conformers.
+    filters conformers by source collection (``keep`` + ``metadata_path``), by SMILES-quality
+    classification (``quality_csv`` + ``keep_classifications``, a per-conformer structural
+    filter), collapses stereochemistry, and drops molecules with fewer than ``min_conformers``
+    conformers.
 
     Skips (and returns) if ``out_path`` already exists.
     """
@@ -272,12 +313,21 @@ def deduplicate(
     raw = ds.data.table
     logger.info(f"  input rows (conformers): {n_rows:,}")
 
-    # --- optional source-collection filter (per-conformer) ---
+    # --- optional per-conformer filters (source collection and/or SMILES quality) ---
     mask = None
     if keep is not None:
         if metadata_path is None:
             raise ValueError("metadata_path is required with keep")
         mask = _build_keep_mask(metadata_path, raw, n_rows, keep)
+
+    if quality_csv is not None and keep_classifications:
+        quality_mask = _build_quality_mask(quality_csv, raw, n_rows, keep_classifications)
+        if mask is None:
+            mask = quality_mask
+        else:
+            # Combine chunks first so both operands are contiguous, single arrays.
+            src_mask = mask.combine_chunks() if isinstance(mask, pa.ChunkedArray) else mask
+            mask = pc.and_(src_mask, quality_mask)
 
     # Widen to 64-bit offsets up front: for big datasets the concatenated buffers overflow
     # 32-bit offsets during take/sort even though the final per-molecule totals fit. Both
