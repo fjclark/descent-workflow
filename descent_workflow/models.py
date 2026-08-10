@@ -44,6 +44,38 @@ class ConformerFilterConfig(BaseModel):
     )
 
 
+class LossOutlierFilterConfig(BaseModel):
+    """Per-entry outlier rejection applied to the fitting loss (train and test).
+
+    For each entry, its energy RMSE (kcal/mol) and force RMSE (kcal/(mol Angstrom)) in physical
+    units are compared against these maxima; if either is exceeded the entry is dropped from that
+    step's loss/gradient (and its identifier/structure saved for inspection). This targets
+    pathological entries (e.g. incorrect SMILES) whose force-field prediction error is far larger
+    than the DFT distribution and which would otherwise dominate the gradient. Any threshold left
+    as ``None`` disables that individual gate.
+
+    Note: non-finite (NaN/Inf) entries are NOT silently dropped here. NaN comparisons are always
+    False, so such entries fall through to the existing non-finite guard in ``get_losses`` which
+    saves them and raises (we fix root causes, not hide NaNs).
+    """
+
+    max_energy_rmse: Optional[float] = Field(
+        default=None,
+        description="Drop entries whose per-entry energy RMSE exceeds this, kcal/mol.",
+    )
+    max_force_rmse: Optional[float] = Field(
+        default=None,
+        description="Drop entries whose per-entry force RMSE exceeds this, kcal/(mol Angstrom).",
+    )
+    max_saved: int = Field(
+        default=200,
+        description=(
+            "Maximum number of unique dropped SMILES whose full structures are saved to disk "
+            "for inspection. The lightweight jsonl log of all drops is unaffected by this."
+        ),
+    )
+
+
 class WorkflowConfig(BaseModel):
     """Configuration for the workflow."""
 
@@ -137,6 +169,31 @@ class WorkflowConfig(BaseModel):
             "per-conformer smiles_quality CSVs (e.g. ['OK'] or ['OK', 'WARNING']). If "
             "None, the structural filter is disabled."
         ),
+    )
+
+    loss_outlier_filter: Optional[LossOutlierFilterConfig] = Field(
+        default=None,
+        description=(
+            "Per-entry outlier rejection for the fitting loss (applied to both train and test). "
+            "If None, no entries are dropped from the loss."
+        ),
+    )
+
+    test_eval_interval: int = Field(
+        default=1,
+        description="Evaluate the test set every N optimizer steps (1 = every step).",
+    )
+
+    test_subset_size: Optional[int] = Field(
+        default=None,
+        description=(
+            "Subsample the test set to this many entries for during-training evaluation. "
+            "None = use the full test set."
+        ),
+    )
+
+    test_subset_seed: int = Field(
+        default=42, description="Seed for the fixed test-set subsample."
     )
 
     type_generation_protocol_name: Optional[str] = Field(

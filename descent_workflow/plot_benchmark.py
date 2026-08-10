@@ -50,6 +50,7 @@ def load_bench(d: Path, ids_to_remove: list[int] | None = None) -> pandas.DataFr
     icrmsd = pandas.read_csv(d / "icrmsd.csv")
     icrmsd.columns = ["rec_id", "bonds", "angles", "dihedrals", "impropers"]
     ret = dde.merge(rmsd).pipe(DF.merge, tfd).pipe(DF.merge, icrmsd)
+    # ret = dde.merge(rmsd).pipe(DF.merge, tfd)
 
     # remove any rows with rec_ids in ids_to_remove
     initial_shape = ret.shape

@@ -25,6 +25,7 @@ from loguru import logger
 from .models import WorkflowConfig
 from openff.interchange import Interchange
 from openff.units import unit as off_unit
+from rdkit import Chem
 
 _ANGSTROM = off_unit.angstrom
 _RADIANS = off_unit.radians
@@ -269,6 +270,37 @@ def build_interchange(
     except BaseException as e:
         logger.error(f"failed to parameterize {smiles}: {e}")
         return None
+
+
+# Water is the one species in the SPICE / OMol sets that the OpenFF force fields make
+# rigid: it matches the TIP3P ``Constraints`` SMIRKS, so its topology comes back with
+# constraints, which chunked parameterisation cannot merge (see
+# ``_FFAccumulator.add_chunk``). It carries no fittable valence information either, so
+# any record containing a water molecule is dropped before parameterising.
+_WATER_PATTERN = Chem.MolFromSmarts("[#8X2H2+0]")
+
+
+def contains_water(smiles: str) -> bool:
+    """Whether ``smiles`` contains a water molecule (as a whole or as a component).
+
+    Unparseable SMILES return ``False`` so that they keep being reported by
+    :func:`build_interchange` rather than being silently attributed to water.
+    """
+    mol = Chem.MolFromSmiles(smiles, sanitize=False)
+    if mol is None:
+        return False
+    # Connectivity and hydrogen counts are all the pattern needs; skipping the full
+    # sanitisation keeps molecules that RDKit considers hypervalent (e.g. some of the
+    # SPICE phosphorus records) matchable.
+    mol.UpdatePropertyCache(strict=False)
+    return mol.HasSubstructMatch(_WATER_PATTERN)
+
+
+def drop_water(unique_smiles: list[str]) -> tuple[list[str], list[str]]:
+    """Split ``unique_smiles`` into ``(kept, water_containing)``."""
+    water = [smiles for smiles in unique_smiles if contains_water(smiles)]
+    water_set = set(water)
+    return [smiles for smiles in unique_smiles if smiles not in water_set], water
 
 
 # The number of particle-index columns for each valence handler type. Used to
@@ -612,6 +644,18 @@ def create_torch_ff_and_top(config: WorkflowConfig) -> None:
 
     unique_smiles_sorted = sorted(unique_smiles_set)
 
+    torch_path = config.torch_ffs_and_tops_path
+    torch_path.parent.mkdir(parents=True, exist_ok=True)
+
+    unique_smiles_sorted, water_smiles = drop_water(unique_smiles_sorted)
+    if water_smiles:
+        water_path = torch_path.with_name(f"{torch_path.stem}_dropped_water_smiles.json")
+        water_path.write_text(json.dumps(water_smiles, indent=2))
+        logger.info(
+            f"Dropped {len(water_smiles)} water-containing smiles (rigid TIP3P "
+            f"constraints); saved to {water_path}"
+        )
+
     logger.info(f"Parameterising. Linearise_harm={config.linearise_harm}")
     force_field, topologies = apply_parameters(
         unique_smiles_sorted,
@@ -620,8 +664,6 @@ def create_torch_ff_and_top(config: WorkflowConfig) -> None:
         chunk_size=config.parameterise_chunk_size,
     )
 
-    torch_path = config.torch_ffs_and_tops_path
-    torch_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save((force_field, topologies), torch_path)
 
     logger.info("Torch force field and topologies saved successfully.")

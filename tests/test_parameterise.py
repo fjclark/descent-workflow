@@ -19,6 +19,8 @@ import torch
 from descent_workflow.parameterise import (
     apply_parameters,
     build_interchange,
+    contains_water,
+    drop_water,
     linearise_harmonics_force_field,
     linearise_harmonics_topology,
 )
@@ -146,6 +148,27 @@ def test_chunked_matches_monolithic(smiles):
 
     _assert_ff_params_equal(ff_mono, ff_chunk)
     _assert_topologies_equal(ff_mono, tops_mono, ff_chunk, tops_chunk)
+
+
+@pytest.mark.parametrize(
+    "smiles, expected",
+    [
+        ("[H:2][O:1][H:3]", True),  # the SPICE DES-monomer water record
+        ("O", True),
+        ("O.CCO", True),  # water as one component of a multi-component record
+        ("CCO", False),  # hydroxyl oxygen is [#8X2H1], not water
+        ("[OH3+]", False),  # hydronium is charged, so does not match TIP3P
+        ("this-is-not-a-valid-mapped-smiles", False),
+    ],
+)
+def test_contains_water(smiles, expected):
+    assert contains_water(smiles) is expected
+
+
+def test_drop_water_preserves_order():
+    kept, water = drop_water(["CCO", "O", "C", "O.C"])
+    assert kept == ["CCO", "C"]
+    assert water == ["O", "O.C"]
 
 
 def test_chunked_matches_monolithic_linearised(smiles):
