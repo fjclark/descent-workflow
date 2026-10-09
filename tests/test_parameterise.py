@@ -187,3 +187,51 @@ def test_chunked_matches_monolithic_linearised(smiles):
 
     _assert_ff_params_equal(ff_mono_lin, ff_chunk)
     _assert_topologies_equal(ff_mono_lin, tops_mono_lin, ff_chunk, tops_chunk)
+
+
+VSITE_FF_PATH = str(
+    pathlib.Path(__file__).resolve().parents[1] / "input_ff" / "vsites_test.offxml"
+)
+
+# With ``chunk_size=3`` the first chunk has no v-sites, and the halogen / pyridine
+# v-site types first appear in different later chunks.
+_VSITE_SMILES = [
+    "C", "CC", "CCO",
+    "CCCl", "c1ccncc1", "CCBr",
+    "Clc1ccccc1", "CCC", "Brc1ccccc1",
+    "ClCCl",
+]
+
+
+def _assert_v_sites_equal(ff_a, tops_a, ff_b, tops_b) -> None:
+    vs_a, vs_b = ff_a.v_sites, ff_b.v_sites
+    params_a = dict(zip(vs_a.keys, vs_a.parameters))
+    params_b = dict(zip(vs_b.keys, vs_b.parameters))
+    assert set(params_a) == set(params_b), "v-site parameter keys differ"
+    for key in params_a:
+        assert torch.allclose(params_a[key], params_b[key])
+
+    for smi in tops_a:
+        ma, mb = tops_a[smi].v_sites, tops_b[smi].v_sites
+        if ma is None or len(ma.keys) == 0:
+            assert mb is None or len(mb.keys) == 0
+            continue
+        assert ma.keys == mb.keys and ma.key_to_idx == mb.key_to_idx
+        assert [vs_a.keys[i] for i in ma.parameter_idxs] == [
+            vs_b.keys[i] for i in mb.parameter_idxs
+        ], f"v-site parameter assignment differs for {smi}"
+
+
+def test_chunked_matches_monolithic_v_sites():
+    smiles = [_mapped(s) for s in _VSITE_SMILES]
+
+    interchanges = [build_interchange(s, (VSITE_FF_PATH,)) for s in smiles]
+    ff_mono, tops_mono = smee.converters.convert_interchange(interchanges)
+    tops_mono = dict(zip(smiles, tops_mono))
+
+    ff_chunk, tops_chunk = apply_parameters(smiles, VSITE_FF_PATH, chunk_size=3)
+
+    assert ff_chunk.v_sites is not None
+    _assert_ff_params_equal(ff_mono, ff_chunk)
+    _assert_topologies_equal(ff_mono, tops_mono, ff_chunk, tops_chunk)
+    _assert_v_sites_equal(ff_mono, tops_mono, ff_chunk, tops_chunk)

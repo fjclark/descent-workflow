@@ -387,6 +387,12 @@ class _FFAccumulator:
         # Merged topologies and their SMILES, in insertion order.
         self._topologies: list[smee.TensorTopology] = []
         self._smiles: list[str] = []
+        # Global first-seen v-site parameter ordering, merged the same way as the
+        # potentials above.
+        self._v_site_keys: list = []
+        self._v_site_key_to_idx: dict = {}
+        self._v_site_weights: list[torch.Tensor] = []
+        self._v_site_rows: list[torch.Tensor] = []
 
     @staticmethod
     def _capture_meta(potential: smee.TensorPotential) -> dict:
@@ -434,9 +440,7 @@ class _FFAccumulator:
         topologies: list[smee.TensorTopology],
         smiles: list[str],
     ) -> None:
-        assert (
-            force_field.v_sites is None
-        ), "chunked parameterisation does not support force fields with virtual sites"
+        v_site_local_to_global = self._add_v_sites(force_field.v_sites)
 
         local_to_global: dict[str, torch.Tensor] = {}
 
@@ -474,8 +478,12 @@ class _FFAccumulator:
 
         for topology, smi in zip(topologies, smiles, strict=True):
             assert (
-                topology.v_sites is None and topology.constraints is None
-            ), "chunked parameterisation does not support v-sites or constraints"
+                topology.constraints is None
+            ), "chunked parameterisation does not support constraints"
+            if topology.v_sites is not None and len(topology.v_sites.keys) > 0:
+                topology.v_sites.parameter_idxs = v_site_local_to_global[
+                    topology.v_sites.parameter_idxs.long()
+                ]
             topology.parameters = {
                 p_type: _reindex_parameter_map(
                     pmap, local_to_global[p_type], len(self._keys[p_type])
@@ -484,6 +492,27 @@ class _FFAccumulator:
             }
             self._topologies.append(topology)
             self._smiles.append(smi)
+
+    def _add_v_sites(self, v_sites: smee.TensorVSites | None) -> torch.Tensor:
+        """Merge a chunk's v-site parameters into the global ordering and return the
+        chunk-local to global v-site parameter index mapping."""
+        if v_sites is None:
+            return torch.empty(0, dtype=torch.int64)
+
+        mapping = torch.empty(len(v_sites.keys), dtype=torch.int64)
+        for i, key in enumerate(v_sites.keys):
+            if key not in self._v_site_key_to_idx:
+                self._v_site_key_to_idx[key] = len(self._v_site_keys)
+                self._v_site_keys.append(key)
+                self._v_site_weights.append(v_sites.weights[i])
+                self._v_site_rows.append(v_sites.parameters[i].clone())
+            else:
+                assert torch.allclose(
+                    v_sites.parameters[i],
+                    self._v_site_rows[self._v_site_key_to_idx[key]],
+                ), f"inconsistent v-site parameters for {key} across chunks"
+            mapping[i] = self._v_site_key_to_idx[key]
+        return mapping
 
     def _empty_valence_map(
         self, p_type: str, n_global: int
@@ -539,7 +568,15 @@ class _FFAccumulator:
                     )
             topology.parameters = new_params
 
-        force_field = smee.TensorForceField(potentials)
+        v_sites = None
+        if self._v_site_keys:
+            v_sites = smee.TensorVSites(
+                keys=self._v_site_keys,
+                weights=self._v_site_weights,
+                parameters=torch.stack(self._v_site_rows),
+            )
+
+        force_field = smee.TensorForceField(potentials, v_sites)
         topologies = dict(zip(self._smiles, self._topologies, strict=True))
         return force_field, topologies
 
