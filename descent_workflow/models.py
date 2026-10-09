@@ -305,7 +305,7 @@ class WorkflowConfig(BaseModel):
 
     @property
     def benchmarking_dir(self) -> Path:
-        return Path("benchmarking/output") / self.experiment_name
+        return Path("benchmarking/industry_benchmark/output") / self.experiment_name
 
     @property
     def output_torch_ff_name(self) -> str:
