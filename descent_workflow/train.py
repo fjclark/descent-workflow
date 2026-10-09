@@ -25,6 +25,77 @@ from openff.interchange.models import PotentialKey
 from tbparse import SummaryReader
 
 
+def predict(
+    dataset: datasets.Dataset | list[dict[str, Any]],
+    force_field: smee.TensorForceField,
+    topologies: dict[str, smee.TensorTopology],
+    reference: str = "mean",
+    normalize: bool = True,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """``descent.targets.energy.predict``, but appending v-site coordinates before
+    computing energies.
+
+    ``smee.compute_energy`` expects coordinates for every particle (atoms followed by
+    v-sites), whereas the dataset only stores atom coordinates. Forces are taken w.r.t.
+    the atom coordinates, so forces on v-sites are projected back onto their parent
+    atoms through the (differentiable) v-site construction.
+    """
+    energy_ref_all, energy_pred_all = [], []
+    forces_ref_all, forces_pred_all = [], []
+
+    for entry in dataset:
+        energy_ref = entry["energy"]
+        forces_ref = entry["forces"].reshape(len(energy_ref), -1, 3)
+
+        coords_flat = smee.utils.tensor_like(
+            entry["coords"], force_field.potentials[0].parameters
+        )
+        coords = (
+            coords_flat.reshape(len(energy_ref), -1, 3).detach().requires_grad_(True)
+        )
+        topology = topologies[entry["smiles"]]
+
+        particle_coords = coords
+        if topology.v_sites is not None and len(topology.v_sites.keys) > 0:
+            particle_coords = smee.geometry.add_v_site_coords(
+                topology.v_sites, coords, force_field
+            )
+
+        energy_pred = smee.compute_energy(topology, force_field, particle_coords)
+        forces_pred = -torch.autograd.grad(
+            energy_pred.sum(),
+            coords,
+            create_graph=True,
+            retain_graph=True,
+            allow_unused=True,
+        )[0]
+
+        if reference.lower() == "mean":
+            energy_ref_0, energy_pred_0 = energy_ref.mean(), energy_pred.mean()
+        elif reference.lower() == "min":
+            min_idx = energy_ref.argmin()
+            energy_ref_0, energy_pred_0 = energy_ref[min_idx], energy_pred[min_idx]
+        else:
+            raise NotImplementedError(f"invalid reference energy {reference}")
+
+        scale_energy, scale_forces = 1.0, 1.0
+        if normalize:
+            scale_energy = 1.0 / torch.sqrt(torch.tensor(energy_pred.numel()))
+            scale_forces = 1.0 / torch.sqrt(torch.tensor(forces_pred.numel()))
+
+        energy_ref_all.append(scale_energy * (energy_ref - energy_ref_0))
+        forces_ref_all.append(scale_forces * forces_ref.reshape(-1, 3))
+        energy_pred_all.append(scale_energy * (energy_pred - energy_pred_0))
+        forces_pred_all.append(scale_forces * forces_pred.reshape(-1, 3))
+
+    energy_pred_all = torch.cat(energy_pred_all)
+    forces_pred_all = torch.cat(forces_pred_all)
+    energy_ref_all = smee.utils.tensor_like(torch.cat(energy_ref_all), energy_pred_all)
+    forces_ref_all = smee.utils.tensor_like(torch.cat(forces_ref_all), forces_pred_all)
+
+    return energy_ref_all, energy_pred_all, forces_ref_all, forces_pred_all
+
+
 def write_train_metrics(
     step: float,
     loss: torch.Tensor,
@@ -189,7 +260,7 @@ def save_nonfinite_entries(
                 reasons.append(f"input:{key}")
 
         try:
-            e_ref, e_pred, f_ref, f_pred = descent.targets.energy.predict(
+            e_ref, e_pred, f_ref, f_pred = predict(
                 [entry], ff, topologies, "mean"
             )
             for name, tensor in (
@@ -340,7 +411,7 @@ def get_losses(
         # A single batched predict is used whether or not the filter is on. predict already loops
         # per molecule internally (distinct topologies can't be tensor-batched), so filtering does
         # not add prediction cost; we just slice the residuals per entry to build a keep-mask.
-        e_ref, e_pred, f_ref, f_pred = descent.targets.energy.predict(
+        e_ref, e_pred, f_ref, f_pred = predict(
             cuda_batch, ff, topologies, "mean"
         )
         e_res_sq = (e_pred - e_ref) ** 2  # per-conformer squared error, shape (n_confs_total,)

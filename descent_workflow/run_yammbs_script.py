@@ -22,8 +22,29 @@ from multiprocessing import freeze_support
 
 import click
 import loguru
+import numpy
+import yammbs._minimize
 from yammbs import MoleculeStore
 from yammbs.inputs import QCArchiveDataset
+
+_minimize_openmm = yammbs._minimize._minimize_openmm
+
+
+def _minimize_openmm_with_v_sites(mol, system, positions):
+    """yammbs passes only atom positions, but force fields with virtual sites give
+    systems with extra (trailing) v-site particles. Pad with placeholder positions
+    (``computeVirtualSites`` sets the real ones) and return only the atom positions."""
+    n_v_sites = system.getNumParticles() - len(positions)
+    if n_v_sites == 0:
+        return _minimize_openmm(mol, system, positions)
+    padded = numpy.vstack([positions, numpy.zeros((n_v_sites, 3))])
+    final_positions, final_energy = _minimize_openmm(mol, system, padded)
+    return final_positions[: len(positions)], final_energy
+
+
+# Patched at import time so that multiprocessing workers (forked or spawned, which
+# re-import this module) also pick it up.
+yammbs._minimize._minimize_openmm = _minimize_openmm_with_v_sites
 
 # try to suppress stereo warnings - from lily's valence-fitting
 # curate-dataset.py
