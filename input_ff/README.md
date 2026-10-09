@@ -11,3 +11,5 @@
     - Initial force field: `lj-sage-2-2-msm-0-expanded-torsions.offxml`
     - Steps:
         - Add Urey-Bradley terms to the force field with: `python add_urey_bradley_terms.py lj-sage-2-2-msm-0-expanded-torsions.offxml lj-sage-2-2-msm-0-expanded-torsions-urey-bradley.offxml`
+
+- `vsites_test.offxml` was "trained_ff.offxml" from Lily Wang
